@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Web98</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="assets/icons/start-flag.svg">
+<link rel="stylesheet" href="assets/ie5/theme.css">
+<link rel="stylesheet" href="css/ie5-shell.css">
+<link rel="stylesheet" href="css/desktop.css">
+<link rel="stylesheet" href="css/pages.css">
+</head>
+<body>
+
+<!-- ============================== boot splash ============================== -->
+<div class="boot" id="boot">
+  <div class="boot__logo">
+    <img src="assets/icons/start-flag.svg" width="52" height="52" alt="">
+    <div class="boot__word"><small>Microsoft</small><span>Windows<i>98</i></span></div>
+  </div>
+  <div class="boot__bar"><i></i></div>
+  <div class="boot__hint">Starting Windows 98&hellip;</div>
+</div>
+
+<!-- ================================ desktop =============================== -->
+<div class="desktop" id="desktop">
+  <div class="desktop__icons" id="desktop-icons">
+    <button class="dicon" type="button" data-open="my-computer">
+      <img src="assets/icons/my-computer.svg" width="32" height="32" alt="">
+      <span>My Computer</span>
+    </button>
+    <button class="dicon" type="button" data-open="recycle-bin">
+      <img src="assets/icons/recycle-bin.svg" width="32" height="32" alt="">
+      <span>Recycle Bin</span>
+    </button>
+    <button class="dicon" type="button" data-open="ie5">
+      <img src="assets/ie5/assets/ie-logo.png" width="32" height="32" alt="">
+      <span>Internet Explorer</span>
+    </button>
+  </div>
+  <!-- windows are injected here -->
+</div>
+
+<!-- ============================== start menu ============================== -->
+<div class="startmenu" id="startmenu" hidden>
+  <div class="startmenu__banner"><span>Web<i>98</i></span></div>
+  <div class="startmenu__items">
+    <div class="sm-item" tabindex="0" data-sub="programs">
+      <img class="sm-icon" src="assets/icons/folder.svg" width="16" height="16" alt="">
+      <span class="sm-label">Programs</span><i class="sm-arrow">&#9654;</i>
+      <div class="sm-sub">
+        <div class="sm-item" tabindex="0" data-action="open-ie">
+          <img class="sm-icon" src="assets/ie5/assets/ie-logo.png" width="16" height="16" alt="">
+          <span class="sm-label">Internet Explorer</span>
+        </div>
+        <div class="sm-item" tabindex="0" data-action="outlook">
+          <img class="sm-icon" src="assets/ie5/assets/mail.svg" width="16" height="16" alt="">
+          <span class="sm-label">Outlook Express</span>
+        </div>
+        <div class="sm-item is-disabled" tabindex="-1">
+          <img class="sm-icon" src="assets/icons/folder.svg" width="16" height="16" alt="">
+          <span class="sm-label">Accessories</span><i class="sm-arrow">&#9654;</i>
+        </div>
+      </div>
+    </div>
+    <div class="sm-item" tabindex="0" data-sub="documents">
+      <img class="sm-icon" src="assets/icons/folder.svg" width="16" height="16" alt="">
+      <span class="sm-label">Documents</span><i class="sm-arrow">&#9654;</i>
+      <div class="sm-sub">
+        <div class="sm-item is-disabled" tabindex="-1"><span class="sm-label">(Empty)</span></div>
+      </div>
+    </div>
+    <div class="sm-item" tabindex="0" data-sub="settings">
+      <img class="sm-icon" src="assets/icons/settings.svg" width="16" height="16" alt="">
+      <span class="sm-label">Settings</span><i class="sm-arrow">&#9654;</i>
+      <div class="sm-sub">
+        <div class="sm-item" tabindex="0" data-action="control-panel">
+          <img class="sm-icon" src="assets/icons/settings.svg" width="16" height="16" alt="">
+          <span class="sm-label">Control Panel</span>
+        </div>
+        <div class="sm-item" tabindex="0" data-action="printers">
+          <img class="sm-icon" src="assets/icons/printer.svg" width="16" height="16" alt="">
+          <span class="sm-label">Printers</span>
+        </div>
+        <div class="sm-item is-disabled" tabindex="-1">
+          <span class="sm-label">Taskbar &amp; Start Menu...</span>
+        </div>
+      </div>
+    </div>
+    <div class="sm-item" tabindex="0" data-sub="find">
+      <img class="sm-icon" src="assets/icons/find.svg" width="16" height="16" alt="">
+      <span class="sm-label">Find</span><i class="sm-arrow">&#9654;</i>
+      <div class="sm-sub">
+        <div class="sm-item" tabindex="0" data-action="find-files">
+          <img class="sm-icon" src="assets/icons/find.svg" width="16" height="16" alt="">
+          <span class="sm-label">Files or Folders...</span>
+        </div>
+        <div class="sm-item" tabindex="0" data-action="find-web">
+          <img class="sm-icon" src="assets/ie5/assets/ie-logo.png" width="16" height="16" alt="">
+          <span class="sm-label">On the Internet...</span>
+        </div>
+        <div class="sm-item is-disabled" tabindex="-1">
+          <span class="sm-label">People...</span>
+        </div>
+      </div>
+    </div>
+    <div class="sm-sep"></div>
+    <div class="sm-item" tabindex="0" data-action="help">
+      <img class="sm-icon" src="assets/icons/help.svg" width="16" height="16" alt="">
+      <span class="sm-label">Help</span>
+    </div>
+    <div class="sm-item" tabindex="0" data-action="run">
+      <img class="sm-icon" src="assets/icons/run.svg" width="16" height="16" alt="">
+      <span class="sm-label">Run&hellip;</span>
+    </div>
+    <div class="sm-sep"></div>
+    <div class="sm-item" tabindex="0" data-action="shutdown">
+      <img class="sm-icon" src="assets/icons/shutdown.svg" width="16" height="16" alt="">
+      <span class="sm-label">Shut Down&hellip;</span>
+    </div>
+  </div>
+</div>
+
+<!-- =============================== taskbar ================================ -->
+<div class="taskbar">
+  <button class="startbtn" id="startbtn" type="button" aria-haspopup="true" aria-expanded="false">
+    <img src="assets/icons/start-flag.svg" width="16" height="16" alt="">
+    <b>Start</b>
+  </button>
+  <div class="taskbar__tasks" id="tasks"></div>
+  <div class="tray">
+    <span class="tray__speakers" title="Volume"></span>
+    <span class="tray__clock" id="clock">12:00 PM</span>
+  </div>
+</div>
+
+<!-- ============================ shutdown screen =========================== -->
+<div class="offscreens" id="offscreen" hidden>
+  <div class="offscreens__text">It&rsquo;s now safe to turn off<br>your computer.</div>
+  <div class="offscreens__hint">(click anywhere to restart)</div>
+</div>
+
+<script src="js/wm.js"></script>
+<script src="js/pages.js"></script>
+<script src="js/ie5.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

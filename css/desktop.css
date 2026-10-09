@@ -1,0 +1,606 @@
+/*
+ * Web98 shell: desktop, window frames, taskbar, start menu, dialogs, boot.
+ * Bevels come from the --w98-* variables defined in assets/ie5/theme.css.
+ */
+
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #008080;
+  font-family: 'Pixelated MS Sans Serif', Verdana, Geneva, sans-serif;
+  font-size: 11px;
+  color: #000;
+  cursor: default;
+}
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+button {
+  cursor: default;
+}
+a {
+  cursor: pointer;
+}
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* ============================== desktop ================================= */
+.desktop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 28px;
+  overflow: hidden;
+}
+.desktop__icons {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 2px;
+  user-select: none;
+}
+.dicon {
+  width: 76px;
+  padding: 4px 2px;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  outline: 0;
+  color: #fff;
+  text-align: center;
+  font: inherit;
+}
+.dicon img {
+  width: 32px;
+  height: 32px;
+}
+.dicon span {
+  padding: 1px 3px;
+  line-height: 12px;
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.7);
+}
+.dicon.is-selected span {
+  background: #000080;
+  text-shadow: none;
+}
+.dicon:focus-visible span {
+  outline: 1px dotted #fff;
+  outline-offset: 0;
+}
+
+/* ============================== windows ================================= */
+.win {
+  position: absolute;
+  min-width: 180px;
+  min-height: 130px;
+  display: flex;
+  flex-direction: column;
+}
+.win.is-minimized {
+  display: none !important;
+}
+.win.is-max .win-resize {
+  display: none;
+}
+.win-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.win-resize {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 17px;
+  height: 17px;
+  z-index: 6;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg width='12' height='12' xmlns='http://www.w3.org/2000/svg'%3E%3Cg stroke='%23808080'%3E%3Cpath d='M11 1L1 11M11 5L5 11M11 9L9 11'/%3E%3C/g%3E%3Cg stroke='%23fff'%3E%3Cpath d='M11 2L2 11M11 6L6 11'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 2px bottom 2px;
+}
+.win-resize::before {
+  content: '';
+  position: absolute;
+  inset: -6px -6px -2px -2px;
+}
+
+/* generic shell widgets ---------------------------------------------------- */
+.w98-btn {
+  min-width: 75px;
+  height: 23px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #c0c0c0;
+  border: 0;
+  box-shadow: var(--w98-raised);
+  font: inherit;
+  color: #000;
+}
+.w98-btn:active {
+  box-shadow: var(--w98-pressed);
+}
+.w98-btn:focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: -4px;
+}
+.w98-btn.is-default {
+  box-shadow: var(--w98-raised), inset 0 0 0 1px #000;
+}
+.w98-btn.is-default:active {
+  box-shadow: var(--w98-pressed), inset 0 0 0 1px #000;
+}
+.w98-input {
+  height: 22px;
+  padding: 2px 4px;
+  background: #fff;
+  border: 0;
+  outline: 0;
+  box-shadow: var(--w98-sunken);
+  font: inherit;
+}
+
+/* ============================== taskbar ================================= */
+.taskbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #c0c0c0;
+  border-top: 1px solid #fff;
+  box-shadow: inset 0 1px 0 #dfdfdf;
+  z-index: 1000;
+  user-select: none;
+}
+.startbtn {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 7px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #c0c0c0;
+  border: 0;
+  box-shadow: var(--w98-raised);
+  font: inherit;
+  font-weight: 700;
+  color: #000;
+}
+.startbtn img {
+  width: 16px;
+  height: 16px;
+}
+.startbtn.is-open {
+  box-shadow: var(--w98-pressed);
+}
+.startbtn.is-open b {
+  position: relative;
+  top: 1px;
+  left: 1px;
+}
+.taskbar__tasks {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  gap: 3px;
+  overflow: hidden;
+}
+.taskbtn {
+  flex: 0 1 168px;
+  min-width: 54px;
+  height: 22px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #c0c0c0;
+  border: 0;
+  box-shadow: var(--w98-raised);
+  font: inherit;
+  color: #000;
+  overflow: hidden;
+}
+.taskbtn img {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.taskbtn span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.taskbtn.is-active {
+  box-shadow: var(--w98-pressed);
+  font-weight: 700;
+  background-color: #c0c0c0;
+  background-image: repeating-conic-gradient(#c0c0c0 0% 25%, #fff 0% 50%);
+  background-size: 2px 2px;
+}
+.tray {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  box-shadow: var(--w98-status);
+}
+.tray__speakers {
+  width: 14px;
+  height: 14px;
+  background: url('../assets/icons/speaker.svg') center / contain no-repeat;
+}
+.tray__clock {
+  min-width: 54px;
+  text-align: center;
+}
+
+/* ============================ start menu ================================ */
+.startmenu {
+  position: absolute;
+  left: 2px;
+  bottom: 30px;
+  width: 196px;
+  padding: 3px;
+  display: flex;
+  background: #c0c0c0;
+  box-shadow: var(--w98-window);
+  z-index: 1100;
+  user-select: none;
+}
+.startmenu__banner {
+  flex: 0 0 auto;
+  width: 26px;
+  margin-right: 2px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: linear-gradient(180deg, #000080 0%, #4d94e6 100%);
+}
+.startmenu__banner span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  padding: 8px 0;
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 1px;
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+}
+.startmenu__banner i {
+  font-style: italic;
+}
+.startmenu__items {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sm-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 6px;
+  color: #000;
+}
+.sm-item:hover:not(.is-disabled),
+.sm-item.is-hot:not(.is-disabled) {
+  background: #000080;
+  color: #fff;
+}
+.sm-item.is-disabled {
+  color: #808080;
+}
+.sm-item.is-disabled .sm-icon {
+  filter: grayscale(1) opacity(0.55);
+}
+.sm-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.sm-label {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+.sm-arrow {
+  font-style: normal;
+  font-size: 7px;
+}
+.sm-sep {
+  height: 0;
+  margin: 3px 2px;
+  border-top: 1px solid #808080;
+  border-bottom: 1px solid #fff;
+}
+.sm-sub {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  min-width: 176px;
+  padding: 3px;
+  background: #c0c0c0;
+  box-shadow: var(--w98-window);
+  z-index: 6;
+}
+.sm-item:hover > .sm-sub {
+  display: block;
+}
+.sm-sub .sm-item {
+  padding: 5px 10px 5px 6px;
+}
+
+/* =============================== dialogs ================================ */
+.dlg {
+  display: flex;
+  gap: 14px;
+  padding: 16px 16px 6px;
+  align-items: flex-start;
+}
+.dlg__icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+}
+.dlg__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 15px;
+}
+.dlg__text b {
+  display: block;
+  margin-bottom: 6px;
+}
+.dlg__text p {
+  margin: 0 0 6px;
+}
+.dlg__form {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dlg__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.dlg__row .w98-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.radio {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 0;
+}
+.radio input {
+  accent-color: #000080;
+}
+.dlg__actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px 16px;
+}
+.dlg__actions.is-right {
+  justify-content: flex-end;
+}
+
+/* ========================== explorer windows ============================ */
+.xtoolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 5px;
+  border-bottom: 1px solid #808080;
+  box-shadow: 0 1px 0 #fff;
+}
+.xtoolbar .w98-btn {
+  min-width: 0;
+  height: 22px;
+  padding: 0 9px;
+}
+.xview {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  box-shadow: var(--w98-sunken);
+}
+.xview__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 4px;
+}
+.xitem {
+  width: 80px;
+  padding: 5px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-align: center;
+  font-size: 11px;
+}
+.xitem img {
+  width: 32px;
+  height: 32px;
+}
+.xitem.is-selected span {
+  background: #000080;
+  color: #fff;
+}
+.lhead {
+  display: flex;
+  flex: 0 0 auto;
+  background: #c0c0c0;
+  border-bottom: 1px solid #808080;
+}
+.lhead span {
+  padding: 3px 8px;
+  border-right: 1px solid #808080;
+  box-shadow: inset 1px 1px #fff;
+  font-size: 11px;
+}
+.lbody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  color: #808080;
+  font-size: 11px;
+}
+
+/* =============================== boot =================================== */
+.boot {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  background: #000;
+  transition: opacity 0.4s ease;
+}
+.boot.is-done {
+  opacity: 0;
+  pointer-events: none;
+}
+.boot__logo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.boot__word {
+  color: #fff;
+  line-height: 1;
+}
+.boot__word small {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+.boot__word span {
+  display: block;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+.boot__word i {
+  font-style: italic;
+  color: #6fb7ff;
+}
+.boot__bar {
+  width: 224px;
+  height: 16px;
+  padding: 3px;
+  background: #000;
+  border: 1px solid #c0c0c0;
+  overflow: hidden;
+}
+.boot__bar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: repeating-linear-gradient(90deg, #2f61cf 0 12px, #000 12px 15px);
+  animation: boot-load 0.85s linear infinite;
+}
+@keyframes boot-load {
+  to {
+    background-position-x: 15px;
+  }
+}
+.boot__hint {
+  position: absolute;
+  bottom: 34px;
+  color: #9a9a9a;
+  font-size: 12px;
+}
+
+/* ========================== shutdown screen ============================= */
+.offscreens {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  background: #000;
+  text-align: center;
+}
+.offscreens__text {
+  color: #ff9d00;
+  font-size: 28px;
+  line-height: 1.45;
+  text-shadow: 0 0 8px rgba(255, 157, 0, 0.45);
+}
+.offscreens__hint {
+  color: #4d4d4d;
+  font-size: 12px;
+}
+
+/* ============================ misc shell ================================ */
+.status-msg {
+  flex: 1 1 auto;
+}
+.src {
+  max-height: 320px;
+  margin: 0;
+  padding: 6px;
+  overflow: auto;
+  background: #fff;
+  box-shadow: var(--w98-sunken);
+  font: 12px 'Courier New', Courier, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+  cursor: text;
+}
+textarea.w98-input {
+  height: auto;
+  padding: 4px;
+  resize: vertical;
+  line-height: 15px;
+}

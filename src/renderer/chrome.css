@@ -1,0 +1,434 @@
+/*
+ * Web98 browser chrome — layout only.
+ * Skin comes from assets/ie5/theme.css, ow-* flexbox wiring from
+ * css/ie5-shell.css. This file adds: app frame, tab strip structure,
+ * side panels, find bar, floating layers, in-window dialogs.
+ */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #c0c0c0;
+  font-family: 'Pixelated MS Sans Serif', Verdana, Geneva, sans-serif;
+  font-size: 11px;
+  color: #000;
+  cursor: default;
+  user-select: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+button {
+  cursor: default;
+}
+
+/* --- application frame ----------------------------------------------------- */
+#app.ow-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 3px;
+}
+#app .ow-titlebar {
+  -webkit-app-region: drag;
+}
+#app .ow-titlebar button {
+  -webkit-app-region: no-drag;
+}
+
+/* history split-arrow affordance disabled (plain Back/Forward buttons) */
+.ow-btn[data-action='back']::after,
+.ow-btn[data-action='forward']::after {
+  content: none;
+}
+
+/* --- menubar extras -------------------------------------------------------- */
+#menubar .ow-menubar__spacer {
+  flex: 1 1 auto;
+}
+
+/* --- address bar extras ---------------------------------------------------- */
+.ow-address-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ow-address-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ow-address-item small {
+  margin-left: auto;
+  color: #808080;
+  flex: 0 0 auto;
+}
+.ow-address-item.is-hot small {
+  color: #c0c0c0;
+}
+
+/* --- tab strip ------------------------------------------------------------- */
+.ow-tabstrip {
+  display: flex;
+  align-items: flex-end;
+  flex: 0 0 auto;
+  min-height: 26px;
+  overflow: hidden;
+  border-bottom: 1px solid #808080;
+  box-shadow: 0 1px 0 #fff;
+}
+.ow-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  top: 0;
+  min-width: 96px;
+  max-width: 200px;
+  height: 22px;
+  padding: 0 7px;
+  box-sizing: border-box;
+  cursor: default;
+}
+.ow-tab.is-active {
+  height: 25px;
+  padding-bottom: 2px;
+  font-weight: 700;
+}
+.ow-tab__icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  background: url('../../assets/ie5/assets/ie-logo.png') center / contain no-repeat;
+}
+.ow-tab__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ow-tab__close {
+  border: 0;
+  padding: 0 2px 2px;
+  line-height: 1;
+  font-size: 11px;
+  flex: 0 0 auto;
+  cursor: default;
+}
+.ow-tab-new {
+  flex: 0 0 auto;
+}
+
+/* --- content row ----------------------------------------------------------- */
+#content-row {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-top: 3px;
+}
+#content-ghost {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: #fff;
+  box-shadow: var(--w98-sunken);
+}
+
+/* --- side panels (Explorer bars) ------------------------------------------- */
+#sidepanel {
+  flex: 0 0 220px;
+  width: 220px;
+  display: none;
+  flex-direction: column;
+  min-height: 0;
+  margin-right: 3px;
+  background: #c0c0c0;
+}
+#sidepanel.is-open {
+  display: flex;
+}
+.sidepanel__head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 6px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(90deg, #000080, #1084d0);
+}
+.sidepanel__head .sidepanel__title {
+  flex: 1 1 auto;
+}
+.sidepanel__head button {
+  width: 16px;
+  height: 14px;
+  padding: 0;
+  background: #c0c0c0;
+  border: 1px solid;
+  border-color: #fff #808080 #808080 #fff;
+}
+.sidepanel__head button:active {
+  border-color: #808080 #fff #fff #808080;
+}
+.sidepanel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 3px;
+  padding: 2px;
+  background: #fff;
+  box-shadow: var(--w98-sunken);
+}
+.panel-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.panel-item:hover {
+  background: #000080;
+  color: #fff;
+}
+.panel-item img {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+.panel-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-item small {
+  margin-left: auto;
+  color: #808080;
+}
+.panel-item:hover small {
+  color: #c0c0c0;
+}
+.panel-empty {
+  color: #808080;
+  padding: 6px 4px;
+}
+.sidepanel__foot {
+  display: flex;
+  gap: 10px;
+  padding: 2px 6px 5px;
+}
+.sidepanel__foot a {
+  color: #0000ee;
+  cursor: pointer;
+}
+.sidepanel__foot a:visited {
+  color: #551a8b;
+}
+
+/* --- find bar -------------------------------------------------------------- */
+#findbar {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  background: #c0c0c0;
+  border-bottom: 1px solid #808080;
+  box-shadow: 0 1px 0 #fff;
+}
+#findbar.is-open {
+  display: flex;
+}
+#findbar .find-label {
+  color: #404040;
+}
+#findbar input[type='text'] {
+  width: 230px;
+  height: 20px;
+  background: #fff;
+  box-shadow: var(--w98-sunken);
+  border: 0;
+  padding: 0 4px;
+  outline: none;
+}
+
+/* --- status bar extras ----------------------------------------------------- */
+.ow-btn.is-active-panel {
+  box-shadow: var(--w98-pressed);
+}
+.ow-statusbar {
+  gap: 4px;
+}
+.ow-status-text {
+  flex: 1 1 auto;
+  padding: 2px 6px;
+}
+.ow-progress {
+  flex: 0 0 160px;
+  padding: 2px;
+  overflow: hidden;
+}
+.ow-progress__bar {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: #000080;
+  transition: none;
+}
+.ow-zone {
+  min-width: 100px;
+}
+
+/* --- floating layers (page context menu, tab menu) ------------------------- */
+#ctxlayer {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  pointer-events: none;
+}
+#ctxlayer > * {
+  pointer-events: auto;
+}
+.ctx-menu {
+  position: fixed;
+  min-width: 190px;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #fff #404040 #404040 #fff;
+  box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.4);
+  padding: 2px;
+  z-index: 251;
+}
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 3px 16px 3px 8px;
+  white-space: nowrap;
+}
+.ctx-item:hover:not(.is-disabled) {
+  background: #000080;
+  color: #fff;
+}
+.ctx-item.is-disabled {
+  color: #808080;
+}
+.ctx-item .ctx-check {
+  width: 14px;
+  flex: 0 0 auto;
+}
+.ctx-sep {
+  height: 0;
+  margin: 3px 2px;
+  border-top: 1px solid #808080;
+  border-bottom: 1px solid #fff;
+}
+
+/* --- in-window dialogs ----------------------------------------------------- */
+#dialogs {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.06);
+}
+#dialogs.is-open {
+  display: flex;
+}
+.minidlg {
+  min-width: 320px;
+  background: #c0c0c0;
+  box-shadow: var(--w98-window), 3px 3px 8px rgba(0, 0, 0, 0.5);
+  padding: 3px;
+}
+.minidlg__title {
+  display: flex;
+  align-items: center;
+  background: linear-gradient(90deg, #000080, #1084d0);
+  color: #fff;
+  font-weight: 700;
+  padding: 3px 4px;
+  margin-bottom: 6px;
+}
+.minidlg__title span {
+  flex: 1 1 auto;
+  padding-left: 4px;
+}
+.minidlg__title .minidlg__close {
+  width: 16px;
+  height: 14px;
+  padding: 0;
+  background: #c0c0c0;
+  border: 1px solid;
+  border-color: #fff #808080 #808080 #fff;
+  color: #000;
+}
+.minidlg__body {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px 4px;
+  align-items: flex-start;
+}
+.minidlg__body .minidlg__text {
+  flex: 1 1 auto;
+}
+.minidlg__body label {
+  display: block;
+  margin-bottom: 3px;
+}
+.minidlg__body input[type='text'],
+.minidlg__body select {
+  display: block;
+  width: 240px;
+  height: 21px;
+  background: #fff;
+  box-shadow: var(--w98-sunken);
+  border: 0;
+  padding: 0 4px;
+  margin-bottom: 8px;
+  outline: none;
+}
+.minidlg__icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+}
+.minidlg__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 14px 12px;
+}
+.w98-btn {
+  min-width: 78px;
+  height: 24px;
+  background: #c0c0c0;
+  border: 1px solid;
+  border-color: #fff #0a0a0a #0a0a0a #fff;
+  box-shadow: var(--w98-raised);
+  padding: 0 10px;
+}
+.w98-btn:active {
+  box-shadow: var(--w98-pressed);
+}
+.w98-btn.is-default {
+  outline: 1px dotted #000;
+  outline-offset: -4px;
+}
+.minidlg__body p {
+  margin: 0 0 6px;
+  line-height: 1.45;
+}
+
+[hidden] {
+  display: none !important;
+}

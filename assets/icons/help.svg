@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <path d="M2.5 2.5 H8 V13.5 H2.5 Z" fill="#1a4fa0" stroke="#000" stroke-width="0.8"/>
+  <path d="M8 2.5 H13.5 V13.5 H8 Z" fill="#2a6fd0" stroke="#000" stroke-width="0.8"/>
+  <path d="M3.2 4 H7.3 M8.7 4 H12.8" stroke="#cfe2ff" stroke-width="0.9"/>
+  <text x="8" y="11.6" font-family="Arial, sans-serif" font-size="8.5" font-weight="bold"
+        fill="#ffe000" text-anchor="middle">?</text>
+</svg>

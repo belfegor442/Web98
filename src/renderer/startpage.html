@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Web98 Home</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+    font-size: 11px;
+    background: #008080;
+    color: #000000;
+    min-height: 100vh;
+  }
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 28px 16px 40px 16px;
+  }
+  .panel {
+    background: #c0c0c0;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+    padding: 16px;
+  }
+  .masthead {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid #808080;
+    padding-bottom: 12px;
+    margin-bottom: 14px;
+  }
+  .masthead img { width: 48px; height: 48px; }
+  .masthead h1 {
+    font-size: 22px;
+    margin: 0;
+    font-weight: bold;
+    letter-spacing: 1px;
+  }
+  .masthead h1 span { color: #000080; }
+  .masthead p { margin: 2px 0 0 0; color: #404040; }
+  .search { display: flex; gap: 6px; margin-bottom: 16px; }
+  .search input {
+    flex: 1;
+    font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+    font-size: 13px;
+    padding: 4px 6px;
+    background: #ffffff;
+    border-top: 2px solid #404040;
+    border-left: 2px solid #404040;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+  }
+  .w98-btn {
+    font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+    font-size: 11px;
+    min-width: 75px;
+    padding: 3px 12px;
+    background: #c0c0c0;
+    border-top: 1px solid #ffffff;
+    border-left: 1px solid #ffffff;
+    border-right: 1px solid #404040;
+    border-bottom: 1px solid #404040;
+    box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #dfdfdf;
+    cursor: default;
+  }
+  .w98-btn:active {
+    border-top: 1px solid #404040;
+    border-left: 1px solid #404040;
+    border-right: 1px solid #ffffff;
+    border-bottom: 1px solid #ffffff;
+    box-shadow: inset 1px 1px 0 #808080;
+  }
+  .columns { display: flex; gap: 16px; flex-wrap: wrap; }
+  .col {
+    flex: 1;
+    min-width: 200px;
+    background: #ffffff;
+    border-top: 2px solid #808080;
+    border-left: 2px solid #808080;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+    padding: 10px 12px;
+  }
+  .col h2 {
+    font-size: 12px;
+    font-weight: bold;
+    margin: 0 0 8px 0;
+    background: #000080;
+    color: #ffffff;
+    padding: 3px 6px;
+  }
+  .col ul { list-style: none; margin: 0; padding: 0; }
+  .col li { padding: 3px 0; }
+  .col a {
+    color: #0000ee;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .col a:visited { color: #551a8b; }
+  .col small { color: #606060; display: block; }
+  .tips {
+    margin-top: 14px;
+    background: #ffffe1;
+    border: 1px solid #808080;
+    padding: 8px 10px;
+    line-height: 1.5;
+  }
+  .footer {
+    margin-top: 12px;
+    text-align: center;
+    color: #c0c0c0;
+    font-size: 10px;
+    text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="panel">
+    <div class="masthead">
+      <img src="../../assets/ie5/assets/ie-logo.png" alt="" />
+      <div>
+        <h1><span>Web</span>98</h1>
+        <p>The Web the way it was meant to be &mdash; on your desktop.</p>
+      </div>
+    </div>
+
+    <form class="search" action="https://www.google.com/search" method="get" id="searchform">
+      <input type="text" name="q" id="q" placeholder="Search the Web..." autocomplete="off" />
+      <button class="w98-btn" type="submit">Search</button>
+      <button class="w98-btn" type="button" id="lucky">I'm Feeling Lucky</button>
+    </form>
+
+    <div class="columns">
+      <div class="col">
+        <h2>Favorites</h2>
+        <ul>
+          <li><a href="https://en.wikipedia.org/wiki/Portal:Contents">Wikipedia</a><small>The free encyclopedia</small></li>
+          <li><a href="https://archive.org/">Internet Archive</a><small>Wayback Machine &amp; more</small></li>
+          <li><a href="https://www.gutenberg.org/">Project Gutenberg</a><small>Free public-domain books</small></li>
+          <li><a href="https://oldweb.today/">oldweb.today</a><small>Browse like it's 1998</small></li>
+        </ul>
+      </div>
+      <div class="col">
+        <h2>On the Internet</h2>
+        <ul>
+          <li><a href="https://news.ycombinator.com/">Hacker News</a><small>tech news</small></li>
+          <li><a href="https://www.reddit.com/r/retrobattlestations/">r/retrobattlestations</a><small>vintage computing</small></li>
+          <li><a href="https://winworldpc.com/">WinWorld</a><small>abandonware museum</small></li>
+          <li><a href="https://caminao.wordpress.com/">Caminao</a><small>art &amp; essays</small></li>
+        </ul>
+      </div>
+      <div class="col">
+        <h2>Browser</h2>
+        <ul>
+          <li><a href="#" data-menu="favorites">Favorites</a><small>open the Favorites bar (Alt+O then 3)</small></li>
+          <li><a href="#" data-menu="history">History</a><small>Tools &rarr; History... (Ctrl+H)</small></li>
+          <li><a href="#" data-menu="settings">Internet Options</a><small>Tools &rarr; Internet Options...</small></li>
+          <li><a href="#" data-menu="about">About Web98</a><small>Help &rarr; About Web98</small></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="tips">
+      <b>Tip:</b> Press <b>Ctrl+L</b> to jump to the address bar, <b>Ctrl+T</b> for a new tab,
+      <b>Ctrl+D</b> to add the current page to Favorites. Try typing a search term directly
+      into the address bar and press Enter.
+    </div>
+  </div>
+
+  <div class="footer">Web98 Home Page &mdash; rendered by a real browser engine, styled like 1998.</div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('searchform');
+  var input = document.getElementById('q');
+  form.addEventListener('submit', function () {
+    if (!input.value.trim()) event.preventDefault();
+  });
+  document.getElementById('lucky').addEventListener('click', function () {
+    if (!input.value.trim()) return;
+    location.href = 'https://www.google.com/search?btnI=1&q=' + encodeURIComponent(input.value);
+  });
+  document.querySelectorAll('[data-menu]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      alert('Use the menu bar: ' + (a.textContent || '').trim());
+    });
+  });
+  input.focus();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+'use strict';
+
+/**
+ * Download manager: tracks Electron downloads, exposes pause/resume/cancel,
+ * safe file opening and folder reveal. State is pushed to renderers.
+ */
+
+var path = require('path');
+var fs = require('fs');
+var { shell, dialog, app } = require('electron');
+
+var DANGEROUS_EXT = [
+  '.exe', '.msi', '.bat', '.cmd', '.com', '.scr', '.pif',
+  '.js', '.jse', '.vbs', '.vbe', '.wsf', '.ps1', '.lnk', '.reg', '.hta'
+];
+
+function uniquePath(dir, name) {
+  var base = path.join(dir, name);
+  if (!fs.existsSync(base)) return base;
+  var ext = path.extname(name);
+  var stem = path.basename(name, ext);
+  var i = 2;
+  while (fs.existsSync(path.join(dir, stem + ' (' + i + ')' + ext))) i++;
+  return path.join(dir, stem + ' (' + i + ')' + ext);
+}
+
+function createDownloads(opts) {
+  // opts: { session, emit, downloadsDir }
+  var items = [];
+  var nextId = 1;
+
+  function snapshot() {
+    return items.map(function (d) {
+      return {
+        id: d.id,
+        filename: d.filename,
+        savePath: d.savePath,
+        url: d.url,
+        state: d.state,
+        received: d.received,
+        total: d.total,
+        startTime: d.startTime,
+        endTime: d.endTime
+      };
+    });
+  }
+
+  function push() {
+    opts.emit('downloads', snapshot());
+  }
+
+  opts.session.on('will-download', function (event, item) {
+    var dir = opts.downloadsDir() || app.getPath('downloads');
+    var filename = item.getFilename() || 'download';
+    var savePath = uniquePath(dir, filename);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch (e) { /* noop */ }
+    item.setSavePath(savePath);
+
+    var d = {
+      id: nextId++,
+      item: item,
+      filename: path.basename(savePath),
+      savePath: savePath,
+      url: item.getURL() || '',
+      state: 'progressing',
+      received: 0,
+      total: item.getTotalBytes() || 0,
+      startTime: Date.now(),
+      endTime: null
+    };
+    items.push(d);
+    push();
+
+    item.on('updated', function (e, state) {
+      d.state = state;
+      d.received = item.getReceivedBytes();
+      d.total = item.getTotalBytes() || d.total;
+      push();
+    });
+
+    item.once('done', function (e, state) {
+      d.state = state;
+      d.received = item.getReceivedBytes();
+      d.endTime = Date.now();
+      push();
+      if (state === 'completed' && opts.onCompleted) opts.onCompleted(d);
+    });
+  });
+
+  function get(id) {
+    return items.find(function (d) { return d.id === id; }) || null;
+  }
+
+  function pause(id) {
+    var d = get(id);
+    if (d && d.state === 'progressing' && d.item.canPause()) d.item.pause();
+    push();
+  }
+  function resume(id) {
+    var d = get(id);
+    if (d && d.state === 'paused' && d.item.canResume()) d.item.resume();
+    push();
+  }
+  function cancel(id) {
+    var d = get(id);
+    if (d && d.state === 'progressing') d.item.cancel();
+    push();
+  }
+  function remove(id) {
+    items = items.filter(function (d) { return d.id !== id; });
+    push();
+  }
+  function clearFinished() {
+    items = items.filter(function (d) {
+      return d.state === 'progressing' || d.state === 'paused';
+    });
+    push();
+  }
+
+  function openFile(id) {
+    var d = get(id);
+    if (!d || d.state !== 'completed') return { ok: false, error: 'Download not completed' };
+    if (!fs.existsSync(d.savePath)) return { ok: false, error: 'File no longer exists' };
+    var ext = path.extname(d.savePath).toLowerCase();
+    if (DANGEROUS_EXT.indexOf(ext) !== -1) {
+      var choice = dialog.showMessageBoxSync({
+        type: 'warning',
+        buttons: ['Open', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        message: 'This file type can harm your computer.',
+        detail: d.filename + ' is a ' + ext + ' file. Only open it if you trust the source.'
+      });
+      if (choice !== 0) return { ok: false, error: 'Cancelled' };
+    }
+    var err = shell.openPath(d.savePath);
+    if (err) return { ok: false, error: String(err) };
+    return { ok: true };
+  }
+
+  function showFolder(id) {
+    var d = get(id);
+    if (!d) return { ok: false };
+    shell.showItemInFolder(d.savePath);
+    return { ok: true };
+  }
+
+  function activeCount() {
+    return items.filter(function (d) {
+      return d.state === 'progressing' || d.state === 'paused';
+    }).length;
+  }
+
+  return {
+    list: snapshot,
+    pause: pause,
+    resume: resume,
+    cancel: cancel,
+    remove: remove,
+    clearFinished: clearFinished,
+    openFile: openFile,
+    showFolder: showFolder,
+    activeCount: activeCount
+  };
+}
+
+module.exports = { createDownloads: createDownloads };

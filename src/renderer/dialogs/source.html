@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Source</title>
+    <link rel="stylesheet" href="../../../assets/ie5/theme.css" />
+    <link rel="stylesheet" href="../../../css/ie5-shell.css" />
+    <link rel="stylesheet" href="dialogs.css" />
+    <style>
+      .src-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+      .src-head .url {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #404040;
+      }
+      #src {
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        white-space: pre;
+        overflow: auto;
+        font-size: 12px;
+        line-height: 1.35;
+        tab-size: 4;
+      }
+      .status { color: #404040; flex: 0 0 auto; }
+    </style>
+  </head>
+  <body>
+    <div class="ow-root win is-active">
+      <div class="ow-titlebar">
+        <span class="ow-titlebar__icon"></span>
+        <span class="ow-titlebar__text">Source</span>
+        <span class="ow-titlebar__controls">
+          <button class="ow-winbtn" data-control="close" title="Close"></button>
+        </span>
+      </div>
+      <div class="dlg-body">
+        <div class="src-head">
+          <span>Address:</span>
+          <span class="url" id="url">(no page)</span>
+          <span class="status" id="status"></span>
+        </div>
+        <textarea class="w98-textarea" id="src" readonly spellcheck="false"></textarea>
+        <div class="dlg-foot">
+          <span class="spacer"></span>
+          <button class="w98-btn" id="btn-select">Select All</button>
+          <button class="w98-btn" id="btn-copy">Copy</button>
+          <button class="w98-btn is-default" id="btn-close">Close</button>
+        </div>
+      </div>
+    </div>
+    <script src="dlg.js"></script>
+    <script>
+      (function () {
+        var src = document.getElementById('src');
+        var url = document.getElementById('url');
+        var status = document.getElementById('status');
+
+        function show(p) {
+          if (!p) return;
+          url.textContent = p.url || '';
+          url.title = p.url || '';
+          src.value = p.html || '';
+          status.textContent = (p.html ? p.html.split('\n').length : 0) + ' lines';
+        }
+        dlg.payload(show);
+
+        document.getElementById('btn-select').addEventListener('click', function () {
+          src.focus();
+          src.select();
+        });
+        document.getElementById('btn-copy').addEventListener('click', function () {
+          src.focus();
+          src.select();
+          var ok = false;
+          try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+          status.textContent = ok ? 'Copied.' : 'Copy failed.';
+        });
+        document.getElementById('btn-close').addEventListener('click', function () {
+          dlg.close();
+        });
+      })();
+    </script>
+  </body>
+</html>

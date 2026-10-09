@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>History</title>
+    <link rel="stylesheet" href="../../../assets/ie5/theme.css" />
+    <link rel="stylesheet" href="../../../css/ie5-shell.css" />
+    <link rel="stylesheet" href="dialogs.css" />
+    <style>
+      .hist-search {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+      .hist-search .w98-input { flex: 1 1 auto; }
+      .hist-count { color: #404040; flex: 0 0 auto; }
+      .side-btns {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 110px;
+        flex: 0 0 auto;
+      }
+      .side-btns .w98-btn { width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div class="ow-root win is-active">
+      <div class="ow-titlebar">
+        <span class="ow-titlebar__icon"></span>
+        <span class="ow-titlebar__text">History</span>
+        <span class="ow-titlebar__controls">
+          <button class="ow-winbtn" data-control="close" title="Close"></button>
+        </span>
+      </div>
+      <div class="dlg-body">
+        <div class="hist-search">
+          <label for="q">Search:</label>
+          <input class="w98-input" id="q" type="text" spellcheck="false" />
+          <span class="hist-count" id="count"></span>
+        </div>
+        <div class="cols">
+          <div class="w98-list" id="list"></div>
+          <div class="col side-btns">
+            <button class="w98-btn" id="btn-open" disabled>Open</button>
+            <button class="w98-btn" id="btn-delete" disabled>Delete</button>
+            <button class="w98-btn" id="btn-clear">Clear All...</button>
+            <span class="spacer"></span>
+            <button class="w98-btn is-default" id="btn-close">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="dlg.js"></script>
+    <script>
+      (function () {
+        var list = document.getElementById('list');
+        var q = document.getElementById('q');
+        var count = document.getElementById('count');
+        var btnOpen = document.getElementById('btn-open');
+        var btnDel = document.getElementById('btn-delete');
+
+        var sel = dlg.bindList(list, {
+          onSelect: function (item) {
+            btnOpen.disabled = !item;
+            btnDel.disabled = !item;
+          },
+          onOpen: function (item) {
+            if (item) dlg.invoke('app:open-url', { url: item.url });
+          }
+        });
+
+        function load() {
+          var query = q.value.trim();
+          dlg.invoke('history:list', query ? { q: query, limit: 300 } : { limit: 300 })
+            .then(function (rows) {
+              rows = rows || [];
+              list.textContent = '';
+              count.textContent = rows.length ? rows.length + ' item' + (rows.length === 1 ? '' : 's') : '';
+              rows.forEach(function (h) {
+                var row = document.createElement('div');
+                row.className = 'row';
+                row._item = h;
+                var img = document.createElement('img');
+                img.src = '../../../assets/ie5/assets/ie-logo.png';
+                row.appendChild(img);
+                var grow = document.createElement('span');
+                grow.className = 'grow';
+                grow.textContent = h.title || h.url;
+                grow.title = h.url;
+                row.appendChild(grow);
+                var dim = document.createElement('span');
+                dim.className = 'dim';
+                dim.textContent = dlg.time(h.ts);
+                row.appendChild(dim);
+                list.appendChild(row);
+              });
+              if (!rows.length) {
+                var none = document.createElement('div');
+                none.className = 'row';
+                none.style.color = '#808080';
+                none.textContent = query ? 'No matching pages.' : 'No history yet.';
+                list.appendChild(none);
+              }
+            });
+        }
+
+        var t = null;
+        q.addEventListener('input', function () {
+          clearTimeout(t);
+          t = setTimeout(load, 200);
+        });
+
+        btnOpen.addEventListener('click', function () {
+          var item = sel.selected();
+          if (item) dlg.invoke('app:open-url', { url: item.url });
+        });
+        btnDel.addEventListener('click', function () {
+          var item = sel.selected();
+          if (!item) return;
+          dlg.invoke('history:delete', { id: item.id }).then(load);
+        });
+        document.getElementById('btn-clear').addEventListener('click', function () {
+          if (window.confirm('Delete all History?\n\nThis cannot be undone.')) {
+            dlg.invoke('history:clear').then(load);
+          }
+        });
+        document.getElementById('btn-close').addEventListener('click', function () {
+          dlg.close();
+        });
+
+        dlg.on('history:changed', load);
+        load();
+        q.focus();
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Downloads</title>
+    <link rel="stylesheet" href="../../../assets/ie5/theme.css" />
+    <link rel="stylesheet" href="../../../css/ie5-shell.css" />
+    <link rel="stylesheet" href="dialogs.css" />
+    <style>
+      .side-btns {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 118px;
+        flex: 0 0 auto;
+      }
+      .side-btns .w98-btn { width: 100%; }
+      .dl-status { color: #404040; font-size: 11px; white-space: nowrap; }
+      .row.is-done .dl-status { color: #006000; }
+      .row.is-err .dl-status { color: #a00000; }
+      .hint {
+        flex: 0 0 auto;
+        color: #404040;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ow-root win is-active">
+      <div class="ow-titlebar">
+        <span class="ow-titlebar__icon"></span>
+        <span class="ow-titlebar__text">Downloads</span>
+        <span class="ow-titlebar__controls">
+          <button class="ow-winbtn" data-control="close" title="Close"></button>
+        </span>
+      </div>
+      <div class="dlg-body">
+        <div class="cols">
+          <div class="w98-list" id="list"></div>
+          <div class="col side-btns">
+            <button class="w98-btn" id="btn-open" disabled>Open</button>
+            <button class="w98-btn" id="btn-folder" disabled>Show Folder</button>
+            <button class="w98-btn" id="btn-pause" disabled>Pause</button>
+            <button class="w98-btn" id="btn-cancel" disabled>Cancel</button>
+            <button class="w98-btn" id="btn-remove" disabled>Remove</button>
+            <button class="w98-btn" id="btn-clear" disabled>Clear Finished</button>
+            <span class="spacer"></span>
+            <button class="w98-btn is-default" id="btn-close">Close</button>
+          </div>
+        </div>
+        <div class="hint" id="hint">Files are saved to your Downloads folder.</div>
+      </div>
+    </div>
+    <script src="dlg.js"></script>
+    <script>
+      (function () {
+        var list = document.getElementById('list');
+        var hint = document.getElementById('hint');
+        var buttons = {
+          open: document.getElementById('btn-open'),
+          folder: document.getElementById('btn-folder'),
+          pause: document.getElementById('btn-pause'),
+          cancel: document.getElementById('btn-cancel'),
+          remove: document.getElementById('btn-remove'),
+          clear: document.getElementById('btn-clear')
+        };
+
+        var current = null;
+
+        function statusText(d) {
+          if (d.state === 'progressing') {
+            if (d.total > 0) {
+              var pct = Math.round((d.received / d.total) * 100);
+              return dlg.bytes(d.received) + ' of ' + dlg.bytes(d.total) + ' (' + pct + '%)';
+            }
+            return dlg.bytes(d.received) + ' downloaded';
+          }
+          if (d.state === 'paused') return 'Paused \u00b7 ' + dlg.bytes(d.received);
+          if (d.state === 'completed') return 'Completed';
+          if (d.state === 'cancelled') return 'Cancelled';
+          if (d.state === 'interrupted') return 'Failed';
+          return d.state;
+        }
+
+        function updateButtons(d) {
+          current = d;
+          var active = d && (d.state === 'progressing' || d.state === 'paused');
+          buttons.open.disabled = !(d && d.state === 'completed');
+          buttons.folder.disabled = !d;
+          buttons.pause.disabled = !active;
+          buttons.cancel.disabled = !active;
+          buttons.remove.disabled = !d || active;
+          buttons.pause.textContent = d && d.state === 'paused' ? 'Resume' : 'Pause';
+        }
+
+        var sel = dlg.bindList(list, {
+          onSelect: updateButtons,
+          onOpen: function (d) {
+            if (d && d.state === 'completed') dlg.invoke('downloads:open', { id: d.id });
+          }
+        });
+
+        function render(items) {
+          var selected = sel.selected();
+          list.textContent = '';
+          var anyFinished = false;
+          (items || []).forEach(function (d) {
+            if (d.state !== 'progressing') anyFinished = true;
+            var row = document.createElement('div');
+            row.className = 'row' +
+              (d.state === 'completed' ? ' is-done' : '') +
+              (d.state === 'interrupted' || d.state === 'cancelled' ? ' is-err' : '');
+            row._item = d;
+            var img = document.createElement('img');
+            img.src = '../../../assets/ie5/assets/favorites.png';
+            row.appendChild(img);
+            var grow = document.createElement('span');
+            grow.className = 'grow';
+            grow.textContent = d.filename;
+            grow.title = d.savePath;
+            row.appendChild(grow);
+            var st = document.createElement('span');
+            st.className = 'dl-status';
+            st.textContent = statusText(d);
+            row.appendChild(st);
+            list.appendChild(row);
+            if (selected && selected.id === d.id) sel.select(d);
+          });
+          buttons.clear.disabled = !anyFinished;
+          if (!items || !items.length) {
+            var none = document.createElement('div');
+            none.className = 'row';
+            none.style.color = '#808080';
+            none.textContent = 'No downloads.';
+            list.appendChild(none);
+            updateButtons(null);
+          }
+        }
+
+        function load() {
+          dlg.invoke('downloads:list').then(render).catch(function () {});
+        }
+
+        buttons.open.addEventListener('click', function () {
+          if (current) dlg.invoke('downloads:open', { id: current.id });
+        });
+        buttons.folder.addEventListener('click', function () {
+          if (current) dlg.invoke('downloads:showFolder', { id: current.id });
+        });
+        buttons.pause.addEventListener('click', function () {
+          if (!current) return;
+          if (current.state === 'paused') dlg.invoke('downloads:resume', { id: current.id });
+          else dlg.invoke('downloads:pause', { id: current.id });
+        });
+        buttons.cancel.addEventListener('click', function () {
+          if (current) dlg.invoke('downloads:cancel', { id: current.id });
+        });
+        buttons.remove.addEventListener('click', function () {
+          if (current) dlg.invoke('downloads:remove', { id: current.id }).then(load);
+        });
+        buttons.clear.addEventListener('click', function () {
+          dlg.invoke('downloads:clearFinished').then(load);
+        });
+        document.getElementById('btn-close').addEventListener('click', function () {
+          dlg.close();
+        });
+
+        dlg.on('downloads', function (items) {
+          render(items);
+          if (items && items.length) {
+            var last = items[items.length - 1];
+            hint.textContent = last.state === 'progressing'
+              ? 'Saving to ' + last.savePath
+              : 'Files are saved to your Downloads folder.';
+          }
+        });
+        load();
+      })();
+    </script>
+  </body>
+</html>

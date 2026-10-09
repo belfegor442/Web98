@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Internet Options</title>
+    <link rel="stylesheet" href="../../../assets/ie5/theme.css" />
+    <link rel="stylesheet" href="../../../css/ie5-shell.css" />
+    <link rel="stylesheet" href="dialogs.css" />
+    <style>
+      .grp { display: flex; flex-direction: column; gap: 8px; }
+      .grp .row-h .w98-input { flex: 1 1 auto; min-width: 0; }
+      .grp .row-h label { flex: 0 0 auto; width: 78px; }
+      .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+      .btn-row .w98-btn { min-width: 0; }
+      .grants {
+        flex: 1 1 auto;
+        min-height: 90px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .pane-note { color: #404040; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <div class="ow-root win is-active">
+      <div class="ow-titlebar">
+        <span class="ow-titlebar__icon"></span>
+        <span class="ow-titlebar__text">Internet Options</span>
+        <span class="ow-titlebar__controls">
+          <button class="ow-winbtn" data-control="close" title="Close"></button>
+        </span>
+      </div>
+      <div class="dlg-body">
+        <div class="dlg-tabs">
+          <div class="dlg-tab is-active" data-pane="general">General</div>
+          <div class="dlg-tab" data-pane="security">Security</div>
+          <div class="dlg-tab" data-pane="privacy">Privacy</div>
+        </div>
+
+        <!-- General -->
+        <div class="dlg-pane" id="pane-general">
+          <fieldset class="w98-group grp">
+            <legend>Home page</legend>
+            <div class="row-h">
+              <label for="in-home">Address:</label>
+              <input class="w98-input" id="in-home" type="text" spellcheck="false" />
+            </div>
+            <div class="btn-row">
+              <button class="w98-btn small" id="btn-home-blank">Use Blank</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="w98-group grp">
+            <legend>Search</legend>
+            <div class="row-h">
+              <label for="in-engine">Provider:</label>
+              <select class="w98-select" id="in-engine"></select>
+            </div>
+          </fieldset>
+
+          <fieldset class="w98-group grp">
+            <legend>Toolbars &amp; session</legend>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-toolbar" />
+              Show toolbar
+            </label>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-status" />
+              Show status bar
+            </label>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-restore" />
+              Restore last session on startup
+            </label>
+          </fieldset>
+        </div>
+
+        <!-- Security -->
+        <div class="dlg-pane" id="pane-security" hidden>
+          <div class="pane-note">
+            Web98 blocks certificate errors by default &mdash; pages show an
+            error screen where you can explicitly continue. Permissions
+            (camera, microphone, notifications, geolocation) are denied
+            unless granted below.
+          </div>
+          <div class="grants">
+            <div class="row-h">
+              <b>Allowed permissions</b>
+              <span class="grow"></span>
+              <button class="w98-btn small" id="btn-revoke" disabled>Revoke</button>
+            </div>
+            <div class="w98-list" id="grants" style="max-height: 160px; flex: 1 1 auto"></div>
+            <div class="pane-note" id="grants-note">No exceptions &mdash; everything is at its default.</div>
+          </div>
+        </div>
+
+        <!-- Privacy -->
+        <div class="dlg-pane" id="pane-privacy" hidden>
+          <fieldset class="w98-group grp">
+            <legend>Delete browsing history</legend>
+            <div class="btn-row">
+              <button class="w98-btn small" id="btn-clear-hist">Delete History</button>
+              <button class="w98-btn small" id="btn-clear-cookies">Delete Cookies</button>
+              <button class="w98-btn small" id="btn-clear-cache">Delete Files (cache)</button>
+            </div>
+            <div class="pane-note" id="clear-status">&nbsp;</div>
+          </fieldset>
+          <fieldset class="w98-group grp">
+            <legend>About permissions</legend>
+            <div class="pane-note">
+              Camera, microphone, geolocation, notifications and similar
+              features are denied unless you grant them here. The address
+              bar shows zone and security state for the current page.
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="dlg-foot">
+          <button class="w98-btn" id="btn-ok">OK</button>
+          <button class="w98-btn" id="btn-cancel">Cancel</button>
+          <button class="w98-btn" id="btn-apply">Apply</button>
+        </div>
+      </div>
+    </div>
+    <script src="dlg.js"></script>
+    <script>
+      (function () {
+        var current = null;   // settings snapshot from main
+        var pending = null;   // edited copy, applied on Apply/OK
+
+        /* --- tabs --- */
+        document.querySelectorAll('.dlg-tab').forEach(function (tab) {
+          tab.addEventListener('click', function () {
+            document.querySelectorAll('.dlg-tab').forEach(function (t) {
+              t.classList.toggle('is-active', t === tab);
+            });
+            ['general', 'security', 'privacy'].forEach(function (name) {
+              document.getElementById('pane-' + name).hidden = name !== tab.dataset.pane;
+            });
+          });
+        });
+
+        /* --- general --- */
+        var inHome = document.getElementById('in-home');
+        var inEngine = document.getElementById('in-engine');
+        var ckToolbar = document.getElementById('ck-toolbar');
+        var ckStatus = document.getElementById('ck-status');
+        var ckRestore = document.getElementById('ck-restore');
+
+        function collect() {
+          pending.homepage = inHome.value.trim() || pending.homepage;
+          pending.searchEngine = inEngine.value;
+          pending.toolbarVisible = ckToolbar.checked;
+          pending.statusBar = ckStatus.checked;
+          pending.sessionRestore = ckRestore.checked;
+          return pending;
+        }
+
+        function fill() {
+          inHome.value = pending.homepage || '';
+          inEngine.textContent = '';
+          (pending.engines || []).forEach(function (e) {
+            var opt = document.createElement('option');
+            opt.value = e.name;
+            opt.textContent = e.name;
+            if (e.name === pending.searchEngine) opt.selected = true;
+            inEngine.appendChild(opt);
+          });
+          ckToolbar.checked = !!pending.toolbarVisible;
+          ckStatus.checked = !!pending.statusBar;
+          ckRestore.checked = !!pending.sessionRestore;
+        }
+
+        document.getElementById('btn-home-blank').addEventListener('click', function () {
+          inHome.value = 'about:blank';
+        });
+
+        /* --- grants --- */
+        var grantsList = document.getElementById('grants');
+        var btnRevoke = document.getElementById('btn-revoke');
+        var grantsNote = document.getElementById('grants-note');
+        var selGrant = null;
+
+        var grantSel = dlg.bindList(grantsList, {
+          onSelect: function (item) {
+            selGrant = item;
+            btnRevoke.disabled = !item;
+          }
+        });
+
+        function loadGrants() {
+          dlg.invoke('settings:grants').then(function (rows) {
+            grantsList.textContent = '';
+            selGrant = null;
+            btnRevoke.disabled = true;
+            (rows || []).forEach(function (g) {
+              var row = document.createElement('div');
+              row.className = 'row';
+              row._item = g;
+              var grow = document.createElement('span');
+              grow.className = 'grow';
+              grow.textContent = g.origin;
+              row.appendChild(grow);
+              var dim = document.createElement('span');
+              dim.className = 'dim';
+              dim.textContent = g.permission + ': ' + (g.value ? 'allow' : 'deny');
+              row.appendChild(dim);
+              grantsList.appendChild(row);
+            });
+            grantsNote.textContent = rows && rows.length
+              ? rows.length + ' exception' + (rows.length === 1 ? '' : 's') + '.'
+              : 'No exceptions \u2014 everything is at its default.';
+          });
+        }
+
+        btnRevoke.addEventListener('click', function () {
+          if (!selGrant) return;
+          dlg.invoke('settings:revoke', {
+            origin: selGrant.origin,
+            permission: selGrant.permission
+          }).then(loadGrants);
+        });
+
+        /* --- privacy --- */
+        var clearStatus = document.getElementById('clear-status');
+        function clear(opts, label) {
+          dlg.invoke('settings:clearData', opts).then(function () {
+            clearStatus.textContent = label + ' deleted.';
+          });
+        }
+        document.getElementById('btn-clear-hist').addEventListener('click', function () {
+          clear({ history: true }, 'History');
+        });
+        document.getElementById('btn-clear-cookies').addEventListener('click', function () {
+          clear({ cookies: true }, 'Cookies');
+        });
+        document.getElementById('btn-clear-cache').addEventListener('click', function () {
+          clear({ cache: true }, 'Cache');
+        });
+
+        /* --- apply / ok / cancel --- */
+        function apply() {
+          collect();
+          var patch = {
+            homepage: pending.homepage,
+            searchEngine: pending.searchEngine,
+            toolbarVisible: pending.toolbarVisible,
+            statusBar: pending.statusBar,
+            sessionRestore: pending.sessionRestore
+          };
+          return dlg.invoke('settings:set', patch).then(function (s) {
+            current = s;
+            pending = Object.assign({}, s);
+            return s;
+          });
+        }
+        document.getElementById('btn-apply').addEventListener('click', apply);
+        document.getElementById('btn-ok').addEventListener('click', function () {
+          apply().then(function () { dlg.close(); });
+        });
+        document.getElementById('btn-cancel').addEventListener('click', function () {
+          dlg.close();
+        });
+
+        /* --- boot --- */
+        dlg.invoke('settings:get').then(function (s) {
+          current = s;
+          pending = Object.assign({}, s);
+          fill();
+        });
+        loadGrants();
+      })();
+    </script>
+  </body>
+</html>

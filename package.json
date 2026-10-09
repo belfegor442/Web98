@@ -1,0 +1,21 @@
+{
+  "name": "web98",
+  "productName": "Web98",
+  "version": "0.1.0",
+  "description": "A real web browser with an authentic Windows 98 / Internet Explorer 5 interface",
+  "main": "src/main/main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "electron test/unit/runner.js",
+    "test:e2e": "node test/e2e/smoke.js",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "bench": "node test/bench/startup.js"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.1",
+    "better-sqlite3": "^13.0.3",
+    "electron": "^44.7.0",
+    "puppeteer-core": "^25.13.0"
+  }
+}

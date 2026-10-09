@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>The page cannot be displayed</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+    font-size: 11px;
+    background: #ffffff;
+    color: #000000;
+    padding: 24px;
+  }
+  .wrap { max-width: 640px; }
+  h1 {
+    font-size: 16px;
+    font-weight: bold;
+    margin: 0 0 14px 0;
+  }
+  .rule {
+    border-top: 2px solid #808080;
+    border-bottom: 1px solid #dfdfdf;
+    height: 0;
+    margin: 0 0 14px 0;
+  }
+  p { line-height: 1.5; margin: 0 0 10px 0; }
+  ul { margin: 0 0 10px 18px; padding: 0; line-height: 1.6; }
+  .url {
+    display: block;
+    background: #f0f0f0;
+    border: 1px solid #808080;
+    padding: 4px 6px;
+    margin: 8px 0 14px 0;
+    word-break: break-all;
+    font-family: "Courier New", monospace;
+    font-size: 11px;
+  }
+  .buttons { margin-top: 18px; }
+  .w98-btn {
+    font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+    font-size: 11px;
+    min-width: 75px;
+    padding: 3px 12px;
+    background: #c0c0c0;
+    color: #000000;
+    border-top: 1px solid #ffffff;
+    border-left: 1px solid #ffffff;
+    border-right: 1px solid #404040;
+    border-bottom: 1px solid #404040;
+    box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #dfdfdf;
+    cursor: default;
+    margin-right: 6px;
+  }
+  .w98-btn:active {
+    border-top: 1px solid #404040;
+    border-left: 1px solid #404040;
+    border-right: 1px solid #ffffff;
+    border-bottom: 1px solid #ffffff;
+    box-shadow: inset 1px 1px 0 #808080;
+  }
+  .w98-btn.is-default { outline: 1px dotted #000000; outline-offset: -4px; }
+  .details {
+    margin-top: 22px;
+    border: 1px solid #808080;
+    background: #f8f8f8;
+    padding: 8px;
+    font-family: "Courier New", monospace;
+    font-size: 11px;
+    word-break: break-all;
+    display: none;
+  }
+  .details.is-open { display: block; }
+  .more {
+    color: #0000ee;
+    text-decoration: underline;
+    cursor: pointer;
+    display: inline-block;
+    margin-top: 6px;
+  }
+  .footer {
+    margin-top: 26px;
+    color: #606060;
+    font-size: 10px;
+  }
+  .lock {
+    display: none;
+    float: left;
+    width: 32px;
+    height: 32px;
+    margin: 0 12px 4px 0;
+    background: no-repeat center/26px url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23e0c060' stroke='%23604010' d='M7 10V7a5 5 0 0 1 10 0v3h1v11H6V10h1zm2 0h6V7a3 3 0 0 0-6 0v3z'/></svg>");
+  }
+  body.is-cert .lock { display: block; }
+  .warning { color: #a00000; font-weight: bold; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="lock"></div>
+  <h1 id="headline">The page cannot be displayed</h1>
+  <div class="rule"></div>
+
+  <p id="intro">The page you are looking for is currently unavailable. The Web site might be experiencing technical difficulties, or you may need to adjust your browser settings.</p>
+  <p class="warning" id="cert-intro" hidden><br />The security certificate presented by this website was not issued by a trusted certificate authority.</p>
+
+  <p>Please try the following:</p>
+  <ul id="hints">
+    <li>Click the <a href="#" id="link-refresh">Refresh</a> button, or try again later.</li>
+    <li>If you typed the page address in the Address bar, make sure that it is spelled correctly.</li>
+    <li>To check your connection settings, click the <b>Tools</b> menu, and then click <b>Internet Options</b>.</li>
+    <li>Click the <a href="#" id="link-back">Back</a> button to try another link.</li>
+  </ul>
+
+  <span class="url" id="url-label"></span>
+
+  <div class="buttons">
+    <button class="w98-btn is-default" id="btn-primary">Refresh</button>
+    <button class="w98-btn" id="btn-secondary" hidden>Continue anyway</button>
+  </div>
+
+  <span class="more" id="more-toggle">Cannot find server or DNS Error &mdash; technical details</span>
+  <div class="details" id="details"></div>
+
+  <div class="footer" id="footer"></div>
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var kind = params.get('kind') || 'net';
+  var code = params.get('code') || '';
+  var desc = params.get('desc') || '';
+  var url = params.get('url') || '';
+  var isCert = kind === 'cert';
+
+  document.body.classList.toggle('is-cert', isCert);
+  document.getElementById('url-label').textContent = url;
+  document.getElementById('details').textContent =
+    'Error code: ' + code + (desc ? '\n' + desc : '') + (url ? '\n' + url : '');
+  document.getElementById('footer').textContent =
+    'Web98 ' + (isCert ? 'Security Certificate Error' : 'Navigation Error') +
+    ' \u00b7 HTTP ' + code;
+
+  if (isCert) {
+    document.getElementById('headline').textContent = 'There is a problem with this website\u2019s security certificate';
+    document.getElementById('intro').hidden = true;
+    document.getElementById('cert-intro').hidden = false;
+    document.getElementById('more-toggle').textContent = 'Certificate error \u2014 technical details';
+    var sec = document.getElementById('btn-secondary');
+    sec.hidden = false;
+    sec.addEventListener('click', function () {
+      if (window.web98cert && url) window.web98cert.proceed(url);
+    });
+  } else {
+    document.getElementById('headline').textContent =
+      /ERR_NAME_NOT_RESOLVED|ERR_NAME_RESOLUTION_FAILED/i.test(desc)
+        ? 'Cannot find server'
+        : 'The page cannot be displayed';
+  }
+
+  function refresh() { location.reload(); }
+  document.getElementById('btn-primary').addEventListener('click', refresh);
+  document.getElementById('link-refresh').addEventListener('click', function (e) {
+    e.preventDefault();
+    refresh();
+  });
+  function back() { history.back(); }
+  document.getElementById('link-back').addEventListener('click', function (e) {
+    e.preventDefault();
+    back();
+  });
+  document.getElementById('more-toggle').addEventListener('click', function () {
+    document.getElementById('details').classList.toggle('is-open');
+  });
+})();
+</script>
+</body>
+</html>

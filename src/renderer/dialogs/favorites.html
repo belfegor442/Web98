@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Organize Favorites</title>
+    <link rel="stylesheet" href="../../../assets/ie5/theme.css" />
+    <link rel="stylesheet" href="../../../css/ie5-shell.css" />
+    <link rel="stylesheet" href="dialogs.css" />
+    <style>
+      .side-btns {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 130px;
+        flex: 0 0 auto;
+      }
+      .side-btns .w98-btn { width: 100%; }
+      .indent {
+        display: inline-block;
+        width: 18px;
+        flex: 0 0 auto;
+      }
+      .editor {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+      .editor.is-open { display: flex; }
+      .editor .w98-input { flex: 1 1 auto; }
+      .editor .w98-btn { min-width: 60px; }
+      .url-line {
+        color: #404040;
+        flex: 0 0 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        height: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ow-root win is-active">
+      <div class="ow-titlebar">
+        <span class="ow-titlebar__icon"></span>
+        <span class="ow-titlebar__text">Organize Favorites</span>
+        <span class="ow-titlebar__controls">
+          <button class="ow-winbtn" data-control="close" title="Close"></button>
+        </span>
+      </div>
+      <div class="dlg-body">
+        <div class="cols">
+          <div class="w98-list" id="list"></div>
+          <div class="col side-btns">
+            <button class="w98-btn" id="btn-newfolder">New Folder</button>
+            <button class="w98-btn" id="btn-rename" disabled>Rename...</button>
+            <button class="w98-btn" id="btn-delete" disabled>Delete</button>
+            <button class="w98-btn" id="btn-import">Import...</button>
+            <button class="w98-btn" id="btn-export">Export...</button>
+            <span class="spacer"></span>
+            <button class="w98-btn is-default" id="btn-close">Close</button>
+          </div>
+        </div>
+        <div class="editor" id="editor">
+          <label for="ed-name" id="ed-label">Name:</label>
+          <input class="w98-input" id="ed-name" type="text" />
+          <button class="w98-btn small" id="ed-ok">OK</button>
+          <button class="w98-btn small" id="ed-cancel">Cancel</button>
+        </div>
+        <div class="url-line" id="url-line"></div>
+      </div>
+    </div>
+    <script src="dlg.js"></script>
+    <script>
+      (function () {
+        var list = document.getElementById('list');
+        var urlLine = document.getElementById('url-line');
+        var editor = document.getElementById('editor');
+        var edName = document.getElementById('ed-name');
+        var edLabel = document.getElementById('ed-label');
+        var btnRename = document.getElementById('btn-rename');
+        var btnDelete = document.getElementById('btn-delete');
+        var all = [];
+        var mode = null; // 'rename' | 'newfolder'
+
+        var sel = dlg.bindList(list, {
+          onSelect: function (item) {
+            var has = !!item;
+            btnRename.disabled = !has;
+            btnDelete.disabled = !has;
+            urlLine.textContent = item ? (item.url || '(folder)') : '';
+            urlLine.title = item && item.url ? item.url : '';
+          },
+          onOpen: function () { openEditor('rename'); }
+        });
+
+        function childrenOf(parent) {
+          return all.filter(function (b) { return (b.parent || 0) === parent; });
+        }
+
+        function render() {
+          list.textContent = '';
+          function walk(parent, depth) {
+            childrenOf(parent).forEach(function (b) {
+              var row = document.createElement('div');
+              row.className = 'row';
+              row._item = b;
+              var pad = document.createElement('span');
+              pad.className = 'indent';
+              pad.style.width = depth * 16 + 'px';
+              row.appendChild(pad);
+              var img = document.createElement('img');
+              img.src = b.url
+                ? '../../../assets/ie5/assets/ie-logo.png'
+                : '../../../assets/ie5/assets/favorites.png';
+              row.appendChild(img);
+              var grow = document.createElement('span');
+              grow.className = 'grow';
+              grow.textContent = b.name;
+              row.appendChild(grow);
+              list.appendChild(row);
+              if (b.url === '' || b.url == null) walk(b.id, depth + 1);
+            });
+          }
+          walk(0, 0);
+          if (!all.length) {
+            var none = document.createElement('div');
+            none.className = 'row';
+            none.style.color = '#808080';
+            none.textContent = 'No favorites yet.';
+            list.appendChild(none);
+          }
+        }
+
+        function load() {
+          dlg.invoke('bookmarks:list').then(function (rows) {
+            all = rows || [];
+            render();
+            var selected = sel.selected();
+            if (selected) {
+              var fresh = all.find(function (b) { return b.id === selected.id; });
+              if (fresh) sel.select(fresh);
+            }
+          });
+        }
+
+        function openEditor(kind) {
+          mode = kind;
+          var item = sel.selected();
+          if (kind === 'rename') {
+            if (!item) return;
+            edLabel.textContent = 'Rename to:';
+            edName.value = item.name;
+          } else {
+            edLabel.textContent = 'Folder name:';
+            edName.value = '';
+          }
+          editor.classList.add('is-open');
+          edName.focus();
+          edName.select();
+        }
+        function closeEditor() {
+          editor.classList.remove('is-open');
+          mode = null;
+        }
+
+        document.getElementById('ed-ok').addEventListener('click', function () {
+          var name = edName.value.trim();
+          if (!name) { closeEditor(); return; }
+          if (mode === 'rename') {
+            var item = sel.selected();
+            if (item) {
+              dlg.invoke('bookmarks:update', { id: item.id, name: name, url: item.url });
+            }
+          } else if (mode === 'newfolder') {
+            dlg.invoke('bookmarks:add', { name: name, url: '', parent: 0 });
+          }
+          closeEditor();
+          setTimeout(load, 120);
+        });
+        document.getElementById('ed-cancel').addEventListener('click', closeEditor);
+        edName.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') document.getElementById('ed-ok').click();
+          if (e.key === 'Escape') closeEditor();
+        });
+
+        document.getElementById('btn-newfolder').addEventListener('click', function () {
+          openEditor('newfolder');
+        });
+        btnRename.addEventListener('click', function () { openEditor('rename'); });
+        btnDelete.addEventListener('click', function () {
+          var item = sel.selected();
+          if (!item) return;
+          if (!window.confirm('Delete "' + item.name + '"?')) return;
+          var ids = [item.id];
+          if (!item.url) {
+            (function collect(parent) {
+              all.forEach(function (b) {
+                if ((b.parent || 0) === parent && b.id !== parent) {
+                  ids.push(b.id);
+                  collect(b.id);
+                }
+              });
+            })(item.id);
+          }
+          var chain = Promise.resolve();
+          ids.forEach(function (id) {
+            chain = chain.then(function () {
+              return dlg.invoke('bookmarks:remove', { id: id });
+            });
+          });
+          chain.then(function () { setTimeout(load, 120); });
+        });
+        document.getElementById('btn-import').addEventListener('click', function () {
+          dlg.invoke('bookmarks:import').then(function (r) {
+            if (r && !r.ok && r.error) window.alert('Import failed: ' + r.error);
+            load();
+          });
+        });
+        document.getElementById('btn-export').addEventListener('click', function () {
+          dlg.invoke('bookmarks:export').then(load);
+        });
+        document.getElementById('btn-close').addEventListener('click', function () {
+          dlg.close();
+        });
+
+        dlg.on('bookmarks:changed', load);
+        load();
+      })();
+    </script>
+  </body>
+</html>
