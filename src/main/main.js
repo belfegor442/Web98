@@ -156,30 +156,60 @@ function boot() {
   });
 
   /* ------------------------------- session ------------------------------ */
+  // Stored shape: { windows: [{ urls: [...], active: n }, ...] }. The legacy
+  // single-window { urls, active } shape is still accepted on load.
   var sessionData = settings.get('lastSession');
-  var restore = settings.get('sessionRestore') && sessionData && sessionData.urls && sessionData.urls.length
-    ? sessionData
-    : null;
-  wm.createMainWindow(restore, true);
+  var restoreWindows = [];
+  if (settings.get('sessionRestore') && sessionData) {
+    if (Array.isArray(sessionData.windows)) restoreWindows = sessionData.windows;
+    else if (sessionData.urls && sessionData.urls.length) restoreWindows = [sessionData];
+  }
+  restoreWindows = restoreWindows.filter(function (w) {
+    return w && Array.isArray(w.urls) && w.urls.length;
+  }).slice(0, 8);
+  if (!restoreWindows.length) restoreWindows = [null];
+  restoreWindows.forEach(function (w) {
+    wm.createMainWindow(w, true);
+  });
 
-  function saveSession() {
+  var quitting = false;
+
+  function saveSession(closingState) {
     if (!settings.get('sessionRestore')) return;
-    var primary = wm.primary();
-    if (!primary || primary.win.isDestroyed()) return;
-    var list = primary.tabs.list();
-    var urls = [];
-    var active = 0;
-    list.forEach(function (t) {
-      if (t.url && t.url !== 'about:blank') {
-        if (t.active) active = urls.length;
-        urls.push(t.url);
-      }
+    var live = [];
+    wm.eachMain(function (state) {
+      if (!state.win.isDestroyed()) live.push(state);
     });
-    settings.set('lastSession', { urls: urls, active: active });
+    // A window the user just closed must not come back on the next launch —
+    // unless it is the only one, in which case its close is the session.
+    if (closingState && live.indexOf(closingState) !== -1) {
+      var others = live.filter(function (s) { return s !== closingState; });
+      if (others.length) live = others;
+    }
+    if (!live.length) return; // nothing live: keep the previously stored session
+    var out = [];
+    live.forEach(function (state) {
+      var urls = [];
+      var active = 0;
+      state.tabs.list().forEach(function (t) {
+        if (t.url && t.url !== 'about:blank') {
+          if (t.active) active = urls.length;
+          urls.push(t.url);
+        }
+      });
+      if (urls.length) out.push({ urls: urls, active: active });
+    });
+    settings.set('lastSession', { windows: out });
   }
 
-  wmDeps.onWindowClosing = saveSession;
-  app.on('before-quit', saveSession);
+  wmDeps.onWindowClosing = function (state) {
+    if (quitting) return; // before-quit already captured every window
+    saveSession(state);
+  };
+  app.on('before-quit', function () {
+    quitting = true;
+    saveSession(null);
+  });
 
   app.on('window-all-closed', function () {
     if (process.platform !== 'darwin') app.quit();

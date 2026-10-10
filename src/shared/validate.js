@@ -6,6 +6,7 @@
  * instead of throwing.
  */
 
+var path = require('path');
 var safeurl = require('./safeurl');
 
 function isPlainObject(v) {
@@ -113,8 +114,9 @@ function sanitizeSettingsPatch(patch) {
         break;
       case 'downloadsDir':
         if (v == null) out.downloadsDir = null;
-        else if (typeof v === 'string' && v.length <= 512 && !/\x00/.test(v)) out.downloadsDir = v;
-        else rejected.push(key);
+        else if (typeof v === 'string' && v.length <= 512 && !/\x00/.test(v) && path.isAbsolute(v)) {
+          out.downloadsDir = v;
+        } else rejected.push(key);
         break;
       default:
         rejected.push(key); // includes permissions, lastSession, etc.

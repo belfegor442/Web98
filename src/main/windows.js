@@ -108,8 +108,9 @@ function createWindowManager(deps) {
 
     win.on('close', function () {
       // Save while the state is still registered: quitting via the window
-      // X runs before-quit only after all windows are gone.
-      if (deps.onWindowClosing) deps.onWindowClosing();
+      // X runs before-quit only after all windows are gone. The closing
+      // state is passed so multi-window sessions can exclude it.
+      if (deps.onWindowClosing) deps.onWindowClosing(state);
     });
     win.on('closed', function () {
       var idx = mainStates.indexOf(state);

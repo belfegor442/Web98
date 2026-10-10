@@ -74,6 +74,19 @@
               Restore last session on startup
             </label>
           </fieldset>
+
+          <fieldset class="w98-group grp">
+            <legend>Downloads</legend>
+            <div class="row-h">
+              <label for="in-dl">Save to:</label>
+              <input class="w98-input" id="in-dl" type="text" spellcheck="false" readonly
+                placeholder="Default downloads folder" />
+            </div>
+            <div class="btn-row">
+              <button class="w98-btn small" id="btn-dl-browse">Browse...</button>
+              <button class="w98-btn small" id="btn-dl-default">Use Default</button>
+            </div>
+          </fieldset>
         </div>
 
         <!-- Security -->
@@ -147,6 +160,7 @@
         var ckToolbar = document.getElementById('ck-toolbar');
         var ckStatus = document.getElementById('ck-status');
         var ckRestore = document.getElementById('ck-restore');
+        var inDl = document.getElementById('in-dl');
 
         function collect() {
           pending.homepage = inHome.value.trim() || pending.homepage;
@@ -154,6 +168,7 @@
           pending.toolbarVisible = ckToolbar.checked;
           pending.statusBar = ckStatus.checked;
           pending.sessionRestore = ckRestore.checked;
+          pending.downloadsDir = inDl.value.trim() || null;
           return pending;
         }
 
@@ -170,10 +185,20 @@
           ckToolbar.checked = !!pending.toolbarVisible;
           ckStatus.checked = !!pending.statusBar;
           ckRestore.checked = !!pending.sessionRestore;
+          inDl.value = pending.downloadsDir || '';
         }
 
         document.getElementById('btn-home-blank').addEventListener('click', function () {
           inHome.value = 'about:blank';
+        });
+
+        document.getElementById('btn-dl-browse').addEventListener('click', function () {
+          dlg.invoke('settings:pickDownloadsDir').then(function (dir) {
+            if (dir) inDl.value = dir;
+          });
+        });
+        document.getElementById('btn-dl-default').addEventListener('click', function () {
+          inDl.value = '';
         });
 
         /* --- grants --- */
@@ -247,7 +272,8 @@
             searchEngine: pending.searchEngine,
             toolbarVisible: pending.toolbarVisible,
             statusBar: pending.statusBar,
-            sessionRestore: pending.sessionRestore
+            sessionRestore: pending.sessionRestore,
+            downloadsDir: pending.downloadsDir
           };
           return dlg.invoke('settings:set', patch).then(function (s) {
             current = s;

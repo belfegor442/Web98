@@ -343,6 +343,15 @@ function runSettings() {
     eq(s2.get('permissions')['https://x.example'].geolocation, true, 'permissions persisted');
   });
 
+  test('settings: stored downloadsDir must be absolute, else dropped', function () {
+    store.setSetting('downloadsDir', 'relative/path');
+    eq(createSettings(store, paths).get('downloadsDir'), null, 'relative value dropped on load');
+    store.setSetting('downloadsDir', 'C:\\Downloads\\Web98');
+    eq(createSettings(store, paths).get('downloadsDir'), 'C:\\Downloads\\Web98', 'absolute value kept');
+    store.setSetting('downloadsDir', null);
+    eq(createSettings(store, paths).get('downloadsDir'), null, 'null restores default');
+  });
+
   store.close();
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* noop */ }
 }
@@ -606,6 +615,14 @@ function runValidate() {
     eq(r.patch.javascript, undefined, 'unknown key dropped');
     ok(r.rejected.indexOf('permissions') !== -1, 'permissions rejected');
     ok(r.rejected.indexOf('lastSession') !== -1, 'lastSession rejected');
+
+    var r4 = validate.sanitizeSettingsPatch({ downloadsDir: 'C:\\Users\\me\\Downloads' });
+    eq(r4.patch.downloadsDir, 'C:\\Users\\me\\Downloads', 'absolute downloadsDir kept');
+    var r5 = validate.sanitizeSettingsPatch({ downloadsDir: 'relative/dir' });
+    eq(r5.patch.downloadsDir, undefined, 'relative downloadsDir rejected');
+    ok(r5.rejected.indexOf('downloadsDir') !== -1, 'relative downloadsDir in rejected');
+    var r6 = validate.sanitizeSettingsPatch({ downloadsDir: null });
+    eq(r6.patch.downloadsDir, null, 'null resets downloadsDir to default');
   });
 
   test('validate: sanitizeSettingsPatch rejects bad homepage and engines', function () {

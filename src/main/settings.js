@@ -62,7 +62,8 @@ function createSettings(store, appPaths) {
   if (typeof cache.searchEngine !== 'string' || !cache.searchEngine) {
     cache.searchEngine = 'DuckDuckGo';
   }
-  if (cache.downloadsDir != null && typeof cache.downloadsDir !== 'string') {
+  if (cache.downloadsDir != null &&
+      (typeof cache.downloadsDir !== 'string' || !path.isAbsolute(cache.downloadsDir))) {
     cache.downloadsDir = null;
   }
   ['sessionRestore', 'statusBar', 'toolbarVisible'].forEach(function (k) {

@@ -280,6 +280,46 @@ async function main() {
       await sleep(400);
     }
 
+    /* settings dialog: downloads folder controls + setting round-trip */
+    await chrome.evaluate(() => window.web98.invoke('window:open', { page: 'settings' }));
+    let settingsPage = null;
+    for (let i = 0; i < 20 && !settingsPage; i++) {
+      const ps = await browser.pages();
+      settingsPage = ps.find((p) => p.url().includes('dialogs/settings.html')) || null;
+      if (!settingsPage) await sleep(300);
+    }
+    check('settings dialog opens', !!settingsPage);
+    if (settingsPage) {
+      const hasDl = await settingsPage.evaluate(() =>
+        !!document.getElementById('in-dl') &&
+        !!document.getElementById('btn-dl-browse') &&
+        !!document.getElementById('btn-dl-default'));
+      check('settings dialog has downloads folder controls', hasDl);
+
+      const dlDir = 'C:\\Web98-DL-Test';
+      const rt = await settingsPage.evaluate(async (dir) => {
+        const set = await window.web98.invoke('settings:set', { downloadsDir: dir });
+        const got = await window.web98.invoke('settings:get');
+        const bad = await window.web98.invoke('settings:set', { downloadsDir: 'relative/dir' });
+        await window.web98.invoke('settings:set', { downloadsDir: null });
+        const cleared = await window.web98.invoke('settings:get');
+        return {
+          setOk: set.downloadsDir === dir,
+          getOk: got.downloadsDir === dir,
+          rejected: !!(bad.rejected && bad.rejected.indexOf('downloadsDir') !== -1) && bad.downloadsDir === dir,
+          cleared: cleared.downloadsDir == null
+        };
+      }, dlDir);
+      check('downloads folder setting round-trips', rt.setOk && rt.getOk, JSON.stringify(rt));
+      check('relative downloads folder rejected', rt.rejected, JSON.stringify(rt));
+      check('downloads folder reset to default', rt.cleared, JSON.stringify(rt));
+
+      await settingsPage.evaluate(() => {
+        document.querySelector('.ow-winbtn').click();
+      });
+      await sleep(400);
+    }
+
     /* find-in-page bar (Ctrl+F) */
     await pressCtrl(chrome, 'KeyF', 70);
     await sleep(500);

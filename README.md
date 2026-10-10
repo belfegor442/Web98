@@ -20,9 +20,10 @@ Built with Electron (`WebContentsView` tabs), a custom retro chrome UI, and
 - **Favorites** — side panel with folders, add/edit/remove, Ctrl+D.
 - **History** — SQLite-backed, searchable dialog (Ctrl+H), autocompletion source.
 - **Downloads** — download manager with progress, cancel, "open when done"
-  confirmation in a retro dialog, folder via shell.
+  confirmation in a retro dialog, folder via shell; target folder configurable
+  in Settings (native picker, absolute paths only, system default as fallback).
 - **Settings dialog** — homepage, search engine (Google/DuckDuckGo/Bing
-  templates), new-tab behavior, font size; persisted to disk.
+  templates), new-tab behavior, font size, downloads folder; persisted to disk.
 - **Find in page** — Ctrl+F find bar with next/prev/highlight/count, F3/Shift+F3.
 - **Context menus** — page/link/image/editable menus rendered in the retro style,
   built per right-click from the main process.
@@ -64,8 +65,8 @@ Built with Electron (`WebContentsView` tabs), a custom retro chrome UI, and
 
 ```sh
 npm start            # run the browser (Electron)
-npm test             # 54 unit tests (runs inside Electron)
-npm run test:e2e     # 26 end-to-end checks (puppeteer-core + CDP)
+npm test             # 55 unit tests (runs inside Electron)
+npm run test:e2e     # 31 end-to-end checks (puppeteer-core + CDP)
 npm run test:restore # session-restore regression (2 app runs)
 npm run bench        # startup / tab-switch / memory benchmark
 npm run bench:memory # per-process memory/CPU + background-throttle benchmark
@@ -143,13 +144,12 @@ been performed here — treat those targets as packaged-but-untested.
 
 ## Known limitations
 
-- Session restore reopens the first window only; it is saved both on quit
-  and when the last window is closed (closing the window used to drop it).
+- Session restore reopens every open window (up to 8); a window you closed
+  manually before quitting is not resurrected, while quitting with N windows
+  open brings all N back. Saved on quit and on window close.
 - No extension support (by design for this scope).
 - Certificate "continue anyway" decisions apply to that tab + URL only and
   expire after 5 minutes (re-clicking renews them).
-- Downloads go to the system downloads folder; the location is not yet
-  user-configurable in Settings.
 - A few confirmation prompts use the native `confirm`/`messageBox` instead of
   a retro dialog.
 - The legacy browser-served Windows 98 prototype (`index.html`, `js/`, `css/`
@@ -159,18 +159,21 @@ been performed here — treat those targets as packaged-but-untested.
 ## Testing
 
 - `npm test` — pure logic (urlbar, safe URL policy, validation, store
-  limits/cascade deletes, settings, menus/accelerators, downloads incl.
-  finished-history cap and coalesced progress emits): **54/54 passing**.
+  limits/cascade deletes, settings incl. absolute downloads-folder paths,
+  menus/accelerators, downloads incl. finished-history cap and coalesced
+  progress emits): **55/55 passing**.
 - `npm run test:e2e` — full browser flows against the live web (tabs,
-  accelerators, menus, Wikipedia navigation, panels, dialogs, find, context
-  menu, `javascript:`/`file:` navigation refused, tab create/close releasing
-  its renderer page, zero console errors): **26/26 passing**. The suite brings
-  the app window to the foreground first — fully occluded windows drop
-  dispatched input, which would flake pointer checks on machines running
-  fullscreen games.
-- `npm run test:restore` — quits the app gracefully with 3 tabs open and
-  relaunches: session persisted, active tab index kept, background tabs
-  deferred-loaded without racing: **8/8 passing**.
+  accelerators, menus, Wikipedia navigation, panels, dialogs incl. the
+  settings dialog's downloads-folder controls and validation round-trip,
+  find, context menu, `javascript:`/`file:` navigation refused, tab
+  create/close releasing its renderer page, zero console errors):
+  **31/31 passing**. The suite brings the app window to the foreground
+  first — fully occluded windows drop dispatched input, which would flake
+  pointer checks on machines running fullscreen games.
+- `npm run test:restore` — quits the app gracefully with TWO windows open
+  (3 tabs in the first, a distinct url in the second) and relaunches: both
+  windows restored with their tab counts, active tab index and url kept,
+  background tabs deferred-loaded without racing: **12/12 passing**.
 - `npm run bench` — measured on this machine, old code (commit `381ef77`)
   vs. optimized code, same session, 3 runs each (medians): debugger up
   154 → 181 ms, app ready 195 → 166 ms, chrome UI loaded 262 → 231 ms,

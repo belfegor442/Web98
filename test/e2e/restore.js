@@ -95,11 +95,41 @@ async function main() {
     );
     check('middle tab activated', activeIdx === 1, `idx=${activeIdx}`);
 
-    /* graceful close: before-quit must persist lastSession.
-       Close from a later macrotask so the evaluate roundtrip finishes
-       before the window (and its target) goes away. */
+    /* second window so the saved session spans two windows */
+    await chrome.evaluate(() => window.web98.invoke('app:command', { name: 'file:new-window' }));
+    let w2 = null;
+    for (let i = 0; i < 40 && !w2; i++) {
+      const idxPages = (await browser.pages()).filter((p) => p.url().includes('index.html'));
+      w2 = idxPages.find((p) => p !== chrome) || null;
+      if (!w2) await sleep(300);
+    }
+    check('second window opened', !!w2);
+    if (w2) {
+      /* wait until the second window's chrome script is live (tab strip
+         rendered) and its homepage has committed, so the address-bar nav
+         below is a same-document jump on a settled page */
+      await w2.waitForFunction(() => document.querySelectorAll('.ow-tab').length >= 1, { timeout: 10000 });
+      await w2.waitForFunction(async () => {
+        const list = await window.web98.invoke('tabs:list');
+        const t = list.find((x) => x.active);
+        return !!(t && t.url && t.url.includes('startpage.html') && !t.loading);
+      }, { timeout: 10000 });
+      await w2.evaluate((u) => {
+        const input = document.getElementById('address');
+        input.value = u;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      }, local + '#w2');
+      /* Done AND the address bar shows the committed url (not a stale Done) */
+      await w2.waitForFunction(() => {
+        const st = document.getElementById('status');
+        const ad = document.getElementById('address');
+        return st && st.textContent === 'Done' && ad && ad.value.includes('#w2');
+      }, { timeout: 8000 });
+    }
+
+    /* graceful quit with BOTH windows open: before-quit must persist them */
     await chrome.evaluate(() => {
-      setTimeout(() => { window.web98.invoke('win:close'); }, 50);
+      setTimeout(() => { window.web98.invoke('app:command', { name: 'file:exit' }); }, 50);
     });
     const exitDeadline = Date.now() + 10000;
     while (first.proc.exitCode === null && Date.now() < exitDeadline) await sleep(100);
@@ -120,30 +150,76 @@ async function main() {
     browser = conn.browser;
     chrome = conn.chrome;
 
-    /* strip must show all 3 tabs immediately (created without waiting for loads) */
-    const early = await chrome.evaluate(async () => ({
+    /* both windows must come back */
+    let indexPages = [];
+    for (let i = 0; i < 40; i++) {
+      indexPages = (await browser.pages()).filter((p) => p.url().includes('index.html'));
+      if (indexPages.length >= 2) break;
+      await sleep(400);
+    }
+    check('both windows restored', indexPages.length === 2, `got ${indexPages.length}`);
+
+    /* deterministic window roles: 3 tabs (window 1) vs 1 tab (window 2) */
+    const snap = async (p) => p.evaluate(async () => ({
       strip: document.querySelectorAll('.ow-tab').length,
       list: (await window.web98.invoke('tabs:list')).map((t) => ({ url: t.url, active: t.active }))
     }));
-    check('all 3 tabs restored instantly', early.strip === 3, JSON.stringify(early));
-    check('exactly one restored tab active', early.list.filter((t) => t.active).length === 1, JSON.stringify(early.list));
+    let win3 = null;
+    let win1 = null;
+    for (let i = 0; i < 40 && (!win3 || !win1); i++) {
+      for (const p of indexPages) {
+        const s = await snap(p);
+        if (s.strip === 3) win3 = s;
+        else if (s.strip === 1) win1 = s;
+      }
+      if (!win3 || !win1) await sleep(400);
+    }
+    check('3-tab window restored instantly', !!win3,
+      win3 ? JSON.stringify(win3) : 'never saw a 3-tab strip');
+    check('second window restored with its tab', !!win1,
+      win1 ? JSON.stringify(win1) : 'never saw a 1-tab strip');
 
-    /* active restored tab is the middle one from run 1 (startpage#1) */
-    const activeUrl = (early.list.find((t) => t.active) || {}).url || '';
-    check('restored active tab keeps its url', activeUrl.includes('startpage.html'), activeUrl);
+    if (win3) {
+      check('exactly one restored tab active', win3.list.filter((t) => t.active).length === 1,
+        JSON.stringify(win3.list));
+      const activeUrl = (win3.list.find((t) => t.active) || {}).url || '';
+      check('restored active tab keeps its url', activeUrl.includes('startpage.html'), activeUrl);
+    } else {
+      check('exactly one restored tab active', false, 'no 3-tab window');
+      check('restored active tab keeps its url', false, 'no 3-tab window');
+    }
+    if (win1) {
+      const w2Url = (win1.list[0] || {}).url || '';
+      check('second window kept its url', w2Url.includes('#w2'), w2Url);
+    } else {
+      check('second window kept its url', false, 'no 1-tab window');
+    }
 
     /* background tabs load staggered: eventually every tab has a page target */
     let grown = false;
     for (let i = 0; i < 40; i++) {
       const pages = (await browser.pages()).filter((p) => p.url().includes('startpage.html'));
-      if (pages.length >= 3) { grown = true; break; }
+      if (pages.length >= 4) { grown = true; break; }
       await sleep(500);
     }
-    check('background tabs load after restore', grown, (await browser.pages()).map((p) => p.url()).join(' | '));
+    check('background tabs load after restore', grown,
+      (await browser.pages()).map((p) => p.url()).join(' | '));
 
-    /* activating a still-pending tab (if any left) must not stall: final state all loaded + strip stable */
-    const finalStrip = await chrome.evaluate(() => document.querySelectorAll('.ow-tab').length);
-    check('tab count stable after restore loads', finalStrip === 3, `got ${finalStrip}`);
+    /* final state: both strips stable after all loads */
+    let final3 = null;
+    let final1 = null;
+    for (let i = 0; i < 20 && (final3 == null || final1 == null); i++) {
+      final3 = null;
+      final1 = null;
+      for (const p of indexPages) {
+        const s = await snap(p);
+        if (s.strip === 3) final3 = s;
+        else if (s.strip === 1) final1 = s;
+      }
+      if (final3 == null || final1 == null) await sleep(400);
+    }
+    check('tab counts stable after restore loads', final3 != null && final1 != null,
+      `3-tab=${final3} 1-tab=${final1}`);
 
     await browser.disconnect();
     browser = null;

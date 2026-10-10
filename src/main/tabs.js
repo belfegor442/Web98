@@ -297,6 +297,7 @@ function createTabManager(opts) {
     tab.error = { code: code, desc: desc, url: url, kind: kind };
     tab.errorPageShown = true;
     tab.suppressCommit = true;
+    tab.navSeq = (tab.navSeq || 0) + 1; // invalidate in-flight load promises
     tab.url = url || tab.url;
     try {
       tab.wc.loadFile(ERROR_PAGE, {
@@ -349,14 +350,34 @@ function createTabManager(opts) {
       return true;
     }
     if (!isLoadableUrl(url)) return false;
+    var current = '';
+    try { current = tab.wc.getURL(); } catch (e) { /* noop */ }
+    var seq = (tab.navSeq = (tab.navSeq || 0) + 1);
     var p = tab.wc.loadURL(url);
     if (p && typeof p.catch === 'function') {
       p.catch(function (err) {
         if (tab.errorPageShown || !tab.wc) return;
-        showError(tab, -1, String((err && err.message) || err || 'Navigation failed'), url);
+        if (seq !== tab.navSeq) return; // superseded by a newer navigation
+        var msg = String((err && err.message) || err || 'Navigation failed');
+        // Rejections on fragment-only jumps are spurious (Electron reports
+        // ERR_ABORTED-like failures even when the in-page jump succeeded).
+        if (isSameDocument(current, url)) return;
+        // Electron quotes the failing url in the message; a mismatch means
+        // this rejection describes some other (superseded) load, not ours.
+        // Real network failures reach did-fail-load with proper codes anyway.
+        if (msg.indexOf(url) === -1) return;
+        showError(tab, -1, msg, url);
       });
     }
     return true;
+  }
+
+  /** True when two urls point at the same document (differ only by #hash). */
+  function isSameDocument(a, b) {
+    if (!a || !b) return false;
+    var h1 = a.split('#')[0];
+    var h2 = b.split('#')[0];
+    return h1 !== '' && h1 === h2;
   }
 
   /** Create a tab that shows `url` but defers its load to the background queue. */

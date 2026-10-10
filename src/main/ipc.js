@@ -319,6 +319,17 @@ function registerIpc(deps) {
     if (result.rejected.length) out.rejected = result.rejected;
     return out;
   });
+  ipcMain.handle('settings:pickDownloadsDir', function (e) {
+    if (!isChromeSender(e) && !isDialogSender(e)) return null;
+    var res = dialog.showOpenDialogSync(senderWindow(e), {
+      title: 'Choose Downloads Folder',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (!res || !res.length) return null;
+    var dir = res[0];
+    if (!path.isAbsolute(dir) || dir.indexOf('\0') !== -1) return null;
+    return dir;
+  });
   ipcMain.handle('settings:clearData', function (e, opts) {
     var options = validate.isPlainObject(opts) ? opts : {};
     var ses = require('electron').session.fromPartition('persist:web98');
@@ -343,7 +354,8 @@ function registerIpc(deps) {
     var page = data && data.page;
     if (typeof page !== 'string' || DIALOG_PAGES.indexOf(page) === -1) return null;
     var s = stateOf(e);
-    return deps.wm.openDialog(page, null, s ? s.win : null);
+    // Return a serializable ack — openDialog gives back a BrowserWindow.
+    return deps.wm.openDialog(page, null, s ? s.win : null) ? page : null;
   });
   ipcMain.handle('window:close', function (e) {
     var w = e.sender.getOwnerBrowserWindow();
