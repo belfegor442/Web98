@@ -36,6 +36,29 @@ function registerIpc(deps) {
   function isTabSender(event) {
     return !!deps.wm.findTabByWc(event.sender);
   }
+
+  // Start-page actions are accepted only from the bundled local start page.
+  ipcMain.handle('startpage:action', function (e, data) {
+    var startUrl = pathToFileURL(path.join(__dirname, '..', 'renderer', 'startpage.html')).href;
+    if (!isTabSender(e) || e.sender.getURL() !== startUrl) throw new Error('Start page action denied');
+    var action = data && data.action;
+    if (action === 'search') {
+      var query = validate.sanitizeText(data && data.query, 500);
+      if (!query) return { ok: false };
+      var parsed = parseAddress(query, { searchTemplate: settings.searchTemplate() });
+      if (parsed.type !== 'url' && parsed.type !== 'search') return { ok: false };
+      if (!safeurl.isLoadableUrl(parsed.url)) return { ok: false };
+      var tab = deps.wm.findTabByWc(e.sender);
+      if (!tab || !tab.wc || tab.wc.isDestroyed()) return { ok: false };
+      tab.wc.loadURL(parsed.url);
+      return { ok: true };
+    }
+    if (['favorites', 'history', 'settings', 'about'].indexOf(action) === -1) throw new Error('Unknown start page action');
+    var owner = e.sender.getOwnerBrowserWindow();
+    if (!owner) return { ok: false };
+    deps.wm.openDialog(action, null, owner);
+    return { ok: true };
+  });
   function tabsOf(event) {
     var s = stateOf(event);
     return s ? s.tabs : null;
