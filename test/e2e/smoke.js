@@ -295,6 +295,59 @@ async function main() {
       await sleep(300);
     }
 
+    /* security: javascript: typed in the address bar must not execute */
+    const secTab = tabPages.length ? tabPages[0] : null;
+    if (secTab) {
+      const beforeUrl = secTab.url();
+      await chrome.click('#address', { clickCount: 3 });
+      await chrome.type('#address', 'javascript:window.__web98pwn=1');
+      await chrome.keyboard.press('Enter');
+      await sleep(1200);
+      const jsSec = await secTab.evaluate(() => typeof window.__web98pwn !== 'undefined').catch(() => true);
+      const afterJsUrl = secTab.url();
+      check(
+        'javascript: address does not execute',
+        jsSec === false && afterJsUrl === beforeUrl,
+        `pwn=${jsSec} url=${afterJsUrl}`
+      );
+    }
+
+    /* security: web pages may not navigate the tab to file: URLs */
+    if (secTab) {
+      const beforeFileUrl = secTab.url();
+      await secTab
+        .evaluate(() => {
+          location.href = 'file:///C:/Windows/System32/drivers/etc/hosts';
+        })
+        .catch(() => {});
+      await sleep(1200);
+      const afterFileUrl = secTab.url();
+      check(
+        'file: navigation from web page blocked',
+        afterFileUrl === beforeFileUrl && afterFileUrl.startsWith('http'),
+        afterFileUrl
+      );
+
+      /* security: window.open('file:...') from a web page creates no tab */
+      const tabPagesBefore = (await browser.pages()).filter(
+        (p) => p.url().startsWith('http') && !p.url().includes('index.html')
+      ).length;
+      await secTab
+        .evaluate(() => {
+          window.open('file:///C:/Windows/win.ini', '_blank');
+        })
+        .catch(() => {});
+      await sleep(1000);
+      const tabPagesAfter = (await browser.pages()).filter(
+        (p) => p.url().startsWith('http') && !p.url().includes('index.html')
+      ).length;
+      check(
+        'window.open file: creates no tab',
+        tabPagesAfter === tabPagesBefore,
+        `before=${tabPagesBefore} after=${tabPagesAfter}`
+      );
+    }
+
     /* no renderer console errors */
     const realErrors = errors.filter(
       (e) =>

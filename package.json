@@ -10,12 +10,50 @@
     "test": "electron test/unit/runner.js",
     "test:e2e": "node test/e2e/smoke.js",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "bench": "node test/bench/startup.js"
+    "bench": "node test/bench/startup.js",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.1",
-    "better-sqlite3": "^13.0.3",
     "electron": "^44.7.0",
+    "electron-builder": "^26.0.12",
     "puppeteer-core": "^25.13.0"
+  },
+  "build": {
+    "appId": "com.web98.browser",
+    "productName": "Web98",
+    "copyright": "Copyright © 2026 Web98",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "css/ie5-shell.css",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Web98"
+    }
   }
 }

@@ -17,6 +17,15 @@ var menus = require('./menus');
 
 app.setName('Web98');
 
+// Log and survive unexpected errors instead of dying silently; individual
+// handlers are still expected to guard their own async work.
+process.on('uncaughtException', function (err) {
+  console.error('[web98] uncaught exception:', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', function (reason) {
+  console.error('[web98] unhandled rejection:', reason);
+});
+
 var store;
 var settings;
 var downloads;

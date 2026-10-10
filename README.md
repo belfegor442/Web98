@@ -36,24 +36,40 @@ Built with Electron (`WebContentsView` tabs), a custom retro chrome UI, and
 
 ## Security model
 
+- **URL policy** — shared `src/shared/safeurl.js` decides what may load in a
+  tab, what a web page may navigate to (no `file:` from remote pages), and
+  what may leave the app via `shell.openExternal` (`mailto:`/`tel:` only).
+  `javascript:` is never evaluated from the address bar.
+- **IPC validation** — every handler in `src/main/ipc.js` validates its
+  sender (chrome / dialog / tab) and its arguments (ids, sizes, URLs,
+  command names); settings patches go through a strict whitelist
+  (`src/shared/validate.js`).
+- **Preload allowlists** — chrome/dialog preload exposes fixed
+  invoke/send/on channel lists; the tab preload exposes only
+  `web98cert.proceed(url)` (type-checked, main-process verified against the
+  error page currently shown).
 - **Sandboxed content** — tabs run with `sandbox: true`, `contextIsolation`,
-  `webviewTag: false`; the tab preload exposes only `web98cert.proceed(url)`.
+  `webviewTag: false`.
 - **Certificates** — invalid/unknown issuers are blocked by default and shown a
-  retro error page with an explicit "continue anyway" action.
+  retro error page with an explicit "continue anyway" action; the grant is
+  scoped to that tab + URL and expires after 5 minutes.
 - **Permissions** — camera/mic/geo/notifications denied by default; per-origin
-  grants from a retro prompt.
+  boolean grants persisted through a validated path only.
 - **Chrome UI is local-only** — `will-navigate`/`window.open` blocked on the
   chrome webContents; dialogs block `window-open`/`will-navigate` too.
-- **Downloads** — no auto-execution; open-after-download requires confirmation.
+- **Downloads** — filenames sanitized (no path traversal, containment
+  checked); no auto-execution; open-after-download requires confirmation.
 
 ## Quick start
 
 ```sh
-npm start          # run the browser (Electron)
-npm test           # 36 unit tests (runs inside Electron)
-npm run test:e2e   # 21 end-to-end checks (puppeteer-core + CDP)
-npm run bench      # startup / tab-switch / memory benchmark
-npm run rebuild    # rebuild better-sqlite3 for the Electron ABI
+npm start            # run the browser (Electron)
+npm test             # 48 unit tests (runs inside Electron)
+npm run test:e2e     # 24 end-to-end checks (puppeteer-core + CDP)
+npm run bench        # startup / tab-switch / memory benchmark
+npm run rebuild      # rebuild better-sqlite3 for the Electron ABI
+npm run dist         # Windows installer (NSIS) + portable exe -> dist/
+npm run dist:portable  # portable exe only
 ```
 
 Environment notes: Node 24 + Electron 44; `better-sqlite3` must be rebuilt for
@@ -78,6 +94,8 @@ src/
     preload-tab.js minimal tab-page bridge (cert continue only)
   shared/
     urlbar.js      pure URL-vs-search classifier (unit-tested)
+    safeurl.js     URL/navigation/external-protocol policy (unit-tested)
+    validate.js    input validation: ids, filenames, bookmarks, settings
   renderer/
     index.html     chrome UI shell
     chrome.js      chrome controller: tabs, address, panels, dialogs, menus
@@ -107,7 +125,8 @@ like a docked pane.
 
 - Session restore reopens the first window only.
 - No extension support (by design for this scope).
-- Certificate "continue anyway" decisions apply to the current load only.
+- Certificate "continue anyway" decisions apply to that tab + URL only and
+  expire after 5 minutes (re-clicking renews them).
 - Downloads go to the system downloads folder; the location is not yet
   user-configurable in Settings.
 - A few confirmation prompts use the native `confirm`/`messageBox` instead of
@@ -118,12 +137,16 @@ like a docked pane.
 
 ## Testing
 
-- `npm test` — pure logic (urlbar, store, settings, menus/accelerators):
-  **36/36 passing**.
+- `npm test` — pure logic (urlbar, safe URL policy, validation, store,
+  settings, menus/accelerators): **48/48 passing**.
 - `npm run test:e2e` — full browser flows against the live web (tabs,
   accelerators, menus, Wikipedia navigation, panels, dialogs, find, context
-  menu, zero console errors): **21/21 passing**. The suite brings the app
+  menu, `javascript:`/`file:` navigation refused, zero console errors):
+  **24/24 passing**. The suite brings the app
   window to the foreground first — fully occluded windows drop dispatched
   input, which would flake pointer checks on machines running fullscreen games.
 - `npm run bench` — startup ~150 ms to ready, tab switch median ~3 ms,
   idle RSS ~100 MB.
+- `npm run dist` — builds `dist/Web98 Setup <version>.exe` (NSIS installer)
+  and `dist/Web98 <version>.exe` (portable); verified to boot, open the
+  start page, create its SQLite database and load real websites.

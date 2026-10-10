@@ -8,6 +8,7 @@
 
 var { BrowserWindow } = require('electron');
 var path = require('path');
+var { sanitizeSessionList } = require('../shared/safeurl');
 
 var RENDERER = path.join(__dirname, '..', 'renderer');
 var PRELOAD = path.join(__dirname, 'preload.js');
@@ -25,6 +26,7 @@ function createWindowManager(deps) {
   // deps: { settings, createTabs, onWindowReady }
   var mainStates = [];
   var dialogs = new Map(); // page -> BrowserWindow
+  var dialogWcs = new Set();
 
   function createMainWindow(sessionData, show) {
     var win = new BrowserWindow({
@@ -59,12 +61,14 @@ function createWindowManager(deps) {
     win.loadFile(path.join(RENDERER, 'index.html'));
 
     win.webContents.on('did-finish-load', function () {
-      if (sessionData && sessionData.urls && sessionData.urls.length) {
-        var activeIdx = sessionData.active || 0;
-        sessionData.urls.forEach(function (u, i) {
+      var urls = sanitizeSessionList(sessionData && sessionData.urls, 40);
+      if (urls.length) {
+        var activeIdx = Number(sessionData && sessionData.active) || 0;
+        if (activeIdx < 0 || activeIdx >= urls.length) activeIdx = 0;
+        urls.forEach(function (u, i) {
           state.tabs.create(u, i === activeIdx);
         });
-        if (state.tabs.count() > 0 && activeIdx != null) {
+        if (state.tabs.count() > 0) {
           var list = state.tabs.list();
           if (list[activeIdx]) state.tabs.setActive(list[activeIdx].id);
         }
@@ -134,6 +138,8 @@ function createWindowManager(deps) {
       }
     });
     dialogs.set(page, win);
+    var dialogWc = win.webContents;
+    dialogWcs.add(dialogWc);
     win.loadFile(path.join(RENDERER, 'dialogs', page + '.html'));
     win.on('focus', function () {
       if (!win.isDestroyed()) win.webContents.send('win:active', { active: true });
@@ -161,6 +167,7 @@ function createWindowManager(deps) {
     });
     win.on('closed', function () {
       dialogs.delete(page);
+      dialogWcs.delete(dialogWc);
     });
     return win;
   }
@@ -169,6 +176,10 @@ function createWindowManager(deps) {
     return (
       mainStates.find(function (s) { return s.chromeWC === wc; }) || null
     );
+  }
+
+  function isDialogWc(wc) {
+    return dialogWcs.has(wc);
   }
 
   function findTabByWc(wc) {
@@ -198,6 +209,7 @@ function createWindowManager(deps) {
     createMainWindow: createMainWindow,
     openDialog: openDialog,
     byChrome: byChrome,
+    isDialogWc: isDialogWc,
     findTabByWc: findTabByWc,
     eachMain: eachMain,
     primary: primary,

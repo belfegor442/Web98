@@ -7,9 +7,17 @@
 
 var fs = require('fs');
 var path = require('path');
+var { pathToFileURL } = require('url');
 var { ipcMain, dialog, clipboard, app } = require('electron');
 var { parseAddress } = require('../shared/urlbar');
+var safeurl = require('../shared/safeurl');
+var validate = require('../shared/validate');
 var menus = require('./menus');
+
+var COMMAND_NAME_RE = /^[a-z][a-z0-9\-]*:[a-z0-9\-]+$/;
+var CONTEXT_COMMAND_RE = /^[a-z][a-z0-9\-]*$/;
+var DIALOG_PAGES = ['about', 'downloads', 'favorites', 'history', 'settings', 'source'];
+var ERROR_PAGE = path.join(__dirname, '..', 'renderer', 'error.html');
 
 function registerIpc(deps) {
   // deps: { settings, store, downloads, security, wm, tabsOf, broadcast, searchTemplate }
@@ -19,6 +27,15 @@ function registerIpc(deps) {
   function stateOf(event) {
     return deps.wm.byChrome(event.sender);
   }
+  function isChromeSender(event) {
+    return !!stateOf(event);
+  }
+  function isDialogSender(event) {
+    return !!deps.wm.isDialogWc(event.sender);
+  }
+  function isTabSender(event) {
+    return !!deps.wm.findTabByWc(event.sender);
+  }
   function tabsOf(event) {
     var s = stateOf(event);
     return s ? s.tabs : null;
@@ -27,6 +44,11 @@ function registerIpc(deps) {
     var t = tabsOf(event);
     if (!t) throw new Error('No browser window for this request');
     return t;
+  }
+  function requireChrome(event) {
+    var s = stateOf(event);
+    if (!s) throw new Error('Browser chrome required');
+    return s;
   }
 
   /* ------------------------------ window ------------------------------- */
@@ -51,7 +73,7 @@ function registerIpc(deps) {
   });
   ipcMain.handle('win:title', function (e, title) {
     var s = stateOf(e);
-    if (s) s.win.setTitle(String(title || 'Web98'));
+    if (s) s.win.setTitle(validate.sanitizeText(title, 200) || 'Web98');
   });
   ipcMain.handle('win:isMax', function (e) {
     var s = stateOf(e);
@@ -63,26 +85,34 @@ function registerIpc(deps) {
     return requireTabs(e).list();
   });
   ipcMain.handle('tabs:create', function (e, data) {
-    return requireTabs(e).create((data && data.url) || null, true).id;
+    var url = data && data.url;
+    if (url != null && (typeof url !== 'string' || !safeurl.isLoadableUrl(url))) {
+      throw new Error('Refusing to load URL');
+    }
+    return requireTabs(e).create(url || null, true).id;
   });
   ipcMain.handle('tabs:close', function (e, data) {
-    requireTabs(e).close(data.id);
+    var id = validate.sanitizeId(data && data.id);
+    if (id != null) requireTabs(e).close(id);
   });
   ipcMain.handle('tabs:activate', function (e, data) {
-    requireTabs(e).setActive(data.id);
+    var id = validate.sanitizeId(data && data.id);
+    if (id != null) requireTabs(e).setActive(id);
   });
 
   /* ----------------------------- navigation ---------------------------- */
   ipcMain.handle('nav:go', function (e, data) {
     var tabs = requireTabs(e);
-    var parsed = parseAddress(data && data.address, {
+    var address = typeof (data && data.address) === 'string' ? data.address.slice(0, safeurl.MAX_URL_LEN) : '';
+    var parsed = parseAddress(address, {
       searchTemplate: settings.searchTemplate()
     });
     if (parsed.type === 'empty') return { ok: false };
     if (parsed.type === 'javascript') {
-      tabs.load(tabs.active(), 'javascript:' + parsed.url);
-      return { ok: true };
+      // Never evaluate page scripts from the address bar.
+      return { ok: false, blocked: true };
     }
+    if (!safeurl.isLoadableUrl(parsed.url)) return { ok: false, blocked: true };
     tabs.load(tabs.active(), parsed.url);
     return { ok: true, url: parsed.url };
   });
@@ -109,21 +139,30 @@ function registerIpc(deps) {
   ipcMain.handle('app:find', function (e, data) {
     var t = requireTabs(e).active();
     if (!t) return;
-    if (data.action === 'stop') {
+    var action = data && data.action;
+    var term = validate.sanitizeText(data && data.term, 200);
+    if (action === 'stop') {
       t.wc.stopFindInPage('clearSelection');
-    } else if (data.action === 'start' && data.term) {
-      t.wc.findInPage(data.term, { forward: true, findNext: true });
-    } else if (data.action === 'next') {
-      t.wc.findInPage(data.term, { forward: true, findNext: true });
-    } else if (data.action === 'prev') {
-      t.wc.findInPage(data.term, { forward: false, findNext: true });
+    } else if (action === 'start' && term) {
+      t.wc.findInPage(term, { forward: true, findNext: true });
+    } else if (action === 'next' && term) {
+      t.wc.findInPage(term, { forward: true, findNext: true });
+    } else if (action === 'prev' && term) {
+      t.wc.findInPage(term, { forward: false, findNext: true });
     }
   });
 
   /* ------------------------------ chrome ------------------------------- */
   ipcMain.handle('chrome:bounds', function (e, rect) {
     var s = stateOf(e);
-    if (s && rect) s.tabs.setBounds(rect);
+    if (!s || !rect) return;
+    if (!Number.isFinite(Number(rect.width)) || !Number.isFinite(Number(rect.height))) return;
+    s.tabs.setBounds({
+      x: validate.clampNumber(rect.x, -10000, 10000, 0),
+      y: validate.clampNumber(rect.y, -10000, 10000, 0),
+      width: validate.clampNumber(rect.width, 0, 10000, 0),
+      height: validate.clampNumber(rect.height, 0, 10000, 0)
+    });
   });
   ipcMain.on('chrome:popup', function (e, data) {
     var s = stateOf(e);
@@ -132,16 +171,17 @@ function registerIpc(deps) {
   ipcMain.on('ctx:command', function (e, data) {
     var s = stateOf(e);
     if (!s) return;
+    var id = data && typeof data.id === 'string' && CONTEXT_COMMAND_RE.test(data.id) ? data.id : null;
+    if (!id) return;
     var tab = s.tabs.active();
     if (!tab || !tab.lastCtx) return;
-    runContextCommand(data && data.id, { params: tab.lastCtx.params }, s, deps);
+    runContextCommand(id, { params: tab.lastCtx.params }, s, deps);
   });
 
   /* ------------------------------ omni box ----------------------------- */
   ipcMain.handle('omni:suggest', function (e, data) {
-    var q = String((data && data.q) || '').trim();
+    var q = validate.sanitizeText(data && data.q, 200).toLowerCase();
     if (!q) return [];
-    var like = '%' + q + '%';
     var out = [];
     var seen = {};
     store.listBookmarks().forEach(function (b) {
@@ -170,21 +210,25 @@ function registerIpc(deps) {
     return store.listBookmarks();
   });
   ipcMain.handle('bookmarks:add', function (e, data) {
-    var b = store.addBookmark({
-      name: data.name || data.url,
-      url: data.url,
-      parent: data.parent || 0
-    });
+    var b = validate.sanitizeBookmark(data);
+    if (!b) return null;
+    var created = store.addBookmark(b);
     changedBooks();
-    return b;
+    return created;
   });
   ipcMain.handle('bookmarks:update', function (e, data) {
-    var b = store.updateBookmark(data.id, { name: data.name, url: data.url });
+    var id = validate.sanitizeId(data && data.id);
+    if (id == null) return null;
+    var patch = validate.sanitizeBookmark({ name: data.name, url: data.url, parent: 0 });
+    if (!patch) return null;
+    var b = store.updateBookmark(id, { name: patch.name, url: patch.url });
     changedBooks();
     return b;
   });
   ipcMain.handle('bookmarks:remove', function (e, data) {
-    store.deleteBookmark(data.id);
+    var id = validate.sanitizeId(data && data.id);
+    if (id == null) return;
+    store.deleteBookmark(id);
     changedBooks();
   });
   ipcMain.handle('bookmarks:export', function (e) {
@@ -195,8 +239,12 @@ function registerIpc(deps) {
       filters: [{ name: 'JSON', extensions: ['json'] }]
     });
     if (!res) return { ok: false };
-    fs.writeFileSync(res, JSON.stringify({ bookmarks: store.listBookmarks() }, null, 2), 'utf8');
-    return { ok: true, path: res };
+    try {
+      fs.writeFileSync(res, JSON.stringify({ bookmarks: store.listBookmarks() }, null, 2), 'utf8');
+      return { ok: true, path: res };
+    } catch (err) {
+      return { ok: false, error: String(err.message || err) };
+    }
   });
   ipcMain.handle('bookmarks:import', function (e) {
     var win = senderWindow(e);
@@ -207,12 +255,15 @@ function registerIpc(deps) {
     if (!res || !res.length) return { ok: false };
     try {
       var data = JSON.parse(fs.readFileSync(res[0], 'utf8'));
-      if (!Array.isArray(data.bookmarks)) throw new Error('bad format');
-      data.bookmarks.forEach(function (b) {
-        store.addBookmark({ name: b.name, url: b.url, parent: b.parent || 0 });
+      var bookmarks = validate.sanitizeBookmarkList(data && data.bookmarks);
+      if (!bookmarks.length && !(Array.isArray(data && data.bookmarks) && data.bookmarks.length === 0)) {
+        throw new Error('bad format');
+      }
+      bookmarks.forEach(function (b) {
+        store.addBookmark(b);
       });
       changedBooks();
-      return { ok: true, count: data.bookmarks.length };
+      return { ok: true, count: bookmarks.length };
     } catch (err) {
       return { ok: false, error: String(err.message || err) };
     }
@@ -220,10 +271,15 @@ function registerIpc(deps) {
 
   /* ------------------------------ history ------------------------------ */
   ipcMain.handle('history:list', function (e, data) {
-    return store.history(data || {});
+    var opts = validate.isPlainObject(data) ? data : {};
+    var q = typeof opts.q === 'string' ? opts.q.slice(0, 200) : undefined;
+    var limit = Number.isInteger(opts.limit) ? Math.min(Math.max(opts.limit, 1), 500) : 200;
+    return store.history({ q: q, limit: limit });
   });
   ipcMain.handle('history:delete', function (e, data) {
-    store.deleteHistory(data.id);
+    var id = validate.sanitizeId(data && data.id);
+    if (id == null) return;
+    store.deleteHistory(id);
     deps.broadcast('history:changed');
   });
   ipcMain.handle('history:clear', function () {
@@ -232,36 +288,40 @@ function registerIpc(deps) {
   });
 
   /* ----------------------------- downloads ----------------------------- */
+  function downloadId(d) {
+    return validate.sanitizeId(d && d.id);
+  }
   ipcMain.handle('downloads:list', function () {
     return deps.downloads.list();
   });
-  ipcMain.handle('downloads:pause', function (e, d) { deps.downloads.pause(d.id); });
-  ipcMain.handle('downloads:resume', function (e, d) { deps.downloads.resume(d.id); });
-  ipcMain.handle('downloads:cancel', function (e, d) { deps.downloads.cancel(d.id); });
-  ipcMain.handle('downloads:remove', function (e, d) { deps.downloads.remove(d.id); });
+  ipcMain.handle('downloads:pause', function (e, d) { var id = downloadId(d); if (id != null) deps.downloads.pause(id); });
+  ipcMain.handle('downloads:resume', function (e, d) { var id = downloadId(d); if (id != null) deps.downloads.resume(id); });
+  ipcMain.handle('downloads:cancel', function (e, d) { var id = downloadId(d); if (id != null) deps.downloads.cancel(id); });
+  ipcMain.handle('downloads:remove', function (e, d) { var id = downloadId(d); if (id != null) deps.downloads.remove(id); });
   ipcMain.handle('downloads:clearFinished', function () { deps.downloads.clearFinished(); });
-  ipcMain.handle('downloads:open', function (e, d) { return deps.downloads.openFile(d.id); });
-  ipcMain.handle('downloads:showFolder', function (e, d) { return deps.downloads.showFolder(d.id); });
+  ipcMain.handle('downloads:open', function (e, d) { var id = downloadId(d); return id != null ? deps.downloads.openFile(id) : { ok: false }; });
+  ipcMain.handle('downloads:showFolder', function (e, d) { var id = downloadId(d); return id != null ? deps.downloads.showFolder(id) : { ok: false }; });
 
   /* ------------------------------ settings ----------------------------- */
   ipcMain.handle('settings:get', function () {
     return settings.get();
   });
   ipcMain.handle('settings:set', function (e, patch) {
-    var allowed = [
-      'homepage', 'searchEngine', 'sessionRestore', 'statusBar',
-      'toolbarVisible', 'zoom', 'downloadsDir', 'engines'
-    ];
-    Object.keys(patch || {}).forEach(function (k) {
-      if (allowed.indexOf(k) !== -1) settings.set(k, patch[k]);
+    var result = validate.sanitizeSettingsPatch(patch);
+    Object.keys(result.patch).forEach(function (k) {
+      settings.set(k, result.patch[k]);
     });
     deps.broadcast('settings:changed', settings.get());
-    return settings.get();
+    var out = settings.get();
+    if (result.rejected.length) out.rejected = result.rejected;
+    return out;
   });
   ipcMain.handle('settings:clearData', function (e, opts) {
-    var ses = require('electron').session.fromPartition('persist:web98');    if (opts.history) store.clearHistory();
-    if (opts.cookies) ses.clearStorageData({ storages: ['cookies'] });
-    if (opts.cache) ses.clearCache();
+    var options = validate.isPlainObject(opts) ? opts : {};
+    var ses = require('electron').session.fromPartition('persist:web98');
+    if (options.history) store.clearHistory();
+    if (options.cookies) ses.clearStorageData({ storages: ['cookies'] });
+    if (options.cache) ses.clearCache();
     deps.broadcast('history:changed');
     return { ok: true };
   });
@@ -269,22 +329,27 @@ function registerIpc(deps) {
     return deps.security.listGrants();
   });
   ipcMain.handle('settings:revoke', function (e, d) {
-    deps.security.setGrant(d.origin, d.permission, null);
+    if (d && validate.isGrantOrigin(d.origin) && validate.isPermissionName(d.permission)) {
+      deps.security.setGrant(d.origin, d.permission, null);
+    }
     return deps.security.listGrants();
   });
 
   /* ------------------------------ windows ------------------------------ */
   ipcMain.handle('window:open', function (e, data) {
+    var page = data && data.page;
+    if (typeof page !== 'string' || DIALOG_PAGES.indexOf(page) === -1) return null;
     var s = stateOf(e);
-    return deps.wm.openDialog(data.page, data.payload || null, s ? s.win : null);
+    return deps.wm.openDialog(page, null, s ? s.win : null);
   });
   ipcMain.handle('window:close', function (e) {
     var w = e.sender.getOwnerBrowserWindow();
     if (w) w.close();
   });
   ipcMain.handle('app:open-url', function (e, data) {
+    if (!isChromeSender(e) && !isDialogSender(e)) return false;
     var url = data && data.url;
-    if (!url) return false;
+    if (typeof url !== 'string' || !safeurl.isLoadableUrl(url)) return false;
     var w = deps.wm.primary();
     if (!w) return false;
     w.tabs.load(w.tabs.active(), url);
@@ -296,8 +361,13 @@ function registerIpc(deps) {
   ipcMain.handle('app:command', function (e, data) {
     var s = stateOf(e);
     if (!s) return false;
+    var name = data && typeof data.name === 'string' && COMMAND_NAME_RE.test(data.name) ? data.name : null;
+    if (!name) return false;
+    var arg = typeof data.arg === 'string'
+      ? data.arg.slice(0, 200)
+      : (typeof data.arg === 'number' && Number.isFinite(data.arg) ? data.arg : undefined);
     try {
-      return menus.runCommand(data.name, data.arg, {
+      return menus.runCommand(name, arg, {
         state: s,
         tabs: s.tabs,
         settings: settings,
@@ -305,7 +375,7 @@ function registerIpc(deps) {
         store: store
       });
     } catch (err) {
-      console.error('[web98] command failed:', data && data.name, err);
+      console.error('[web98] command failed:', name, err);
       return false;
     }
   });
@@ -334,14 +404,31 @@ function registerIpc(deps) {
 
   /* --------------------------- certificate flow ------------------------ */
   ipcMain.on('cert:proceed', function (e, url) {
+    if (!isTabSender(e)) return;
     var found = deps.wm.findTabByWc(e.sender);
     if (!found) return;
     var tab = found.tab;
     if (!tab.error || tab.error.kind !== 'cert') return;
     if (tab.url !== url) return;
+    // Only the internal error page may request the one-shot grant, and it
+    // must still be the page currently displayed in this tab (query string
+    // carries the error details and is ignored for comparison).
+    try {
+      var current = tab.wc.getURL().replace(/[?#].*$/, '');
+      if (current !== pathToFileURL(ERROR_PAGE).href) return;
+    } catch (err) {
+      return;
+    }
     deps.security.grantCert(tab.wc.id, url);
     tab.error = null;
-    tab.wc.reload();
+    // Re-navigate to the original URL: the tab currently displays the local
+    // error page, so a plain reload() would just reload that page.
+    try {
+      var p = tab.wc.loadURL(url);
+      if (p && typeof p.catch === 'function') p.catch(function () {});
+    } catch (err) {
+      /* did-fail-load shows the error page again */
+    }
   });
 
   function senderWindow(e) {

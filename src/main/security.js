@@ -6,11 +6,19 @@
  */
 
 var { app } = require('electron');
+var validate = require('../shared/validate');
 
-var certDecisions = new Map(); // "<wcId>|<url>" -> "allow"
+var certDecisions = new Map(); // "<wcId>|<url>" -> expiry timestamp (ms)
+var CERT_GRANT_TTL_MS = 5 * 60 * 1000;
 
 function keyFor(wcId, url) {
   return wcId + '|' + url;
+}
+
+function pruneCertDecisions(now) {
+  Array.from(certDecisions.entries()).forEach(function (entry) {
+    if (entry[1] <= now) certDecisions.delete(entry[0]);
+  });
 }
 
 function initSecurity(opts) {
@@ -19,8 +27,13 @@ function initSecurity(opts) {
 
   app.on('certificate-error', function (event, webContents, url, error, certificate, callback) {
     var key = keyFor(webContents.id, url);
-    if (certDecisions.get(key) === 'allow') {
-      certDecisions.delete(key);
+    var now = Date.now();
+    pruneCertDecisions(now);
+    var decision = certDecisions.get(key);
+    if (decision > now) {
+      // Grant valid for its TTL: Chromium can raise certificate-error more
+      // than once for a single load (preconnect + main request), so the
+      // grant must outlive the first event and then expire on its own.
       event.preventDefault();
       callback(true);
       return;
@@ -32,14 +45,20 @@ function initSecurity(opts) {
   });
 
   function grantCert(webContentsId, url) {
-    certDecisions.set(keyFor(webContentsId, url), 'allow');
+    if (!Number.isInteger(webContentsId)) return;
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+    pruneCertDecisions(Date.now());
+    certDecisions.set(keyFor(webContentsId, url), Date.now() + CERT_GRANT_TTL_MS);
   }
 
   /* ----------------------------- permissions ---------------------------- */
   function permissionDecision(origin, permission) {
+    if (typeof origin !== 'string' || !validate.isPermissionName(permission)) return 'deny';
     var perms = settings.get('permissions') || {};
     var byOrigin = perms[origin];
-    if (byOrigin && byOrigin[permission] != null) return byOrigin[permission];
+    if (byOrigin && typeof byOrigin[permission] === 'boolean') {
+      return byOrigin[permission] ? 'allow' : 'deny';
+    }
     if (permission === 'fullscreen') return 'allow';
     return 'deny';
   }
@@ -77,6 +96,8 @@ function initSecurity(opts) {
   }
 
   function setGrant(origin, permission, value) {
+    if (!validate.isGrantOrigin(origin) || !validate.isPermissionName(permission)) return;
+    if (value != null && typeof value !== 'boolean') return;
     var perms = Object.assign({}, settings.get('permissions') || {});
     var byOrigin = Object.assign({}, perms[origin] || {});
     if (value == null) {

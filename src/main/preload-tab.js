@@ -10,6 +10,7 @@ var { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('web98cert', {
   proceed: function (url) {
-    ipcRenderer.send('cert:proceed', url);
+    if (typeof url !== 'string') return;
+    ipcRenderer.send('cert:proceed', url.slice(0, 8192));
   }
 });

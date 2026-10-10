@@ -8,12 +8,16 @@
 var path = require('path');
 var { WebContentsView, shell } = require('electron');
 var { contextTemplate } = require('./menus');
+var {
+  isLoadableUrl,
+  isAllowedNavigation,
+  isWebUrl,
+  isSafeExternalUrl
+} = require('../shared/safeurl');
 
 var nextTabId = 1;
 var PRELOAD = path.join(__dirname, 'preload-tab.js');
 var ERROR_PAGE = path.join(__dirname, '..', 'renderer', 'error.html');
-
-var ALLOWED_NAV = /^https?:|^file:|^javascript:/i;
 
 function createTabManager(opts) {
   var win = opts.win;
@@ -93,19 +97,25 @@ function createTabManager(opts) {
 
     wc.setWindowOpenHandler(function (details) {
       var u = details.url || '';
-      if (/^https?:|^file:/i.test(u)) {
-        create(u, true);
-      } else if (/^(mailto|tel):/i.test(u)) {
+      if (isSafeExternalUrl(u)) {
         shell.openExternal(u);
+      } else if (isLoadableUrl(u)) {
+        var opener = '';
+        try { opener = wc.getURL(); } catch (e) { /* noop */ }
+        if (isAllowedNavigation(u, { fromWeb: isWebUrl(opener) })) create(u, true);
       }
       return { action: 'deny' };
     });
 
     wc.on('will-navigate', function (e, url) {
-      if (!ALLOWED_NAV.test(url)) {
+      if (isSafeExternalUrl(url)) {
         e.preventDefault();
-        if (/^(mailto|tel):/i.test(url)) shell.openExternal(url);
+        shell.openExternal(url);
+        return;
       }
+      var current = '';
+      try { current = wc.getURL(); } catch (err) { /* noop */ }
+      if (!isAllowedNavigation(url, { fromWeb: isWebUrl(current) })) e.preventDefault();
     });
 
     wc.on('did-start-loading', function () {
@@ -140,6 +150,7 @@ function createTabManager(opts) {
       }
       tab.url = url;
       tab.error = null;
+      tab.crashedOnce = false;
       emitTabs();
       navState(tab);
     });
@@ -167,7 +178,7 @@ function createTabManager(opts) {
 
     wc.on('did-fail-load', function (e, code, desc, url, isMainFrame) {
       if (!isMainFrame || code === -3) return; // -3 = aborted
-      if (tab.loadingErrorPage) return;
+      if (tab.errorPageShown) return;
       showError(tab, code, desc, url);
     });
 
@@ -208,6 +219,7 @@ function createTabManager(opts) {
   }
 
   function showError(tab, code, desc, url) {
+    if (tab.errorPageShown) return;
     var kind = /ERR_CERT|ERR_SSL|ERR_BAD_SSL/i.test(String(desc || '')) || isCertCode(code)
       ? 'cert'
       : 'net';
@@ -277,13 +289,20 @@ function createTabManager(opts) {
   }
 
   function load(tab, url) {
-    if (!tab) return;
-    if (/^javascript:/i.test(url)) {
-      var code = url.replace(/^javascript:/i, '');
-      tab.wc.executeJavaScript(code, true).catch(function () {});
-      return;
+    if (!tab || !tab.wc) return false;
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url);
+      return true;
     }
-    tab.wc.loadURL(url);
+    if (!isLoadableUrl(url)) return false;
+    var p = tab.wc.loadURL(url);
+    if (p && typeof p.catch === 'function') {
+      p.catch(function (err) {
+        if (tab.errorPageShown || !tab.wc) return;
+        showError(tab, -1, String((err && err.message) || err || 'Navigation failed'), url);
+      });
+    }
+    return true;
   }
 
   function get(id) {
@@ -349,7 +368,13 @@ function createTabManager(opts) {
   }
 
   function setBounds(b) {
-    bounds = b;
+    if (!b) return;
+    var x = Number(b.x);
+    var y = Number(b.y);
+    var width = Number(b.width);
+    var height = Number(b.height);
+    if (![x, y, width, height].every(Number.isFinite)) return;
+    bounds = { x: x, y: y, width: width, height: height };
     applyBounds();
   }
 

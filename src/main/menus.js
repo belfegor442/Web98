@@ -5,7 +5,7 @@
  * and the command executor shared by menus and keyboard shortcuts.
  */
 
-var { dialog, shell, BrowserWindow } = require('electron');
+var { dialog } = require('electron');
 
 function contextTemplate(params, tab) {
   var items = [];
@@ -107,10 +107,12 @@ function runCommand(name, arg, ctx) {
     case 'view:fullscreen':
       win.setFullScreen(!win.isFullScreen());
       return true;
-    case 'view:zoom':
-      ctx.tabs.setZoom(arg);
-      ctx.settings.set('zoom', arg);
+    case 'view:zoom': {
+      var z = Math.min(3, Math.max(0.25, Number(arg) || 1));
+      ctx.tabs.setZoom(z);
+      ctx.settings.set('zoom', z);
       return true;
+    }
     case 'view:toolbar':
       ctx.settings.set('toolbarVisible', !ctx.settings.get('toolbarVisible'));
       ctx.state.emitRenderer('settings:changed', ctx.settings.get());
@@ -152,14 +154,17 @@ function runCommand(name, arg, ctx) {
 function savePage(tab) {
   if (!tab) return;
   var suggested = (tab.title || 'page').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80) + '.html';
-  dialog.showSaveDialog({
-    title: 'Save Web Page',
-    defaultPath: suggested,
-    filters: [{ name: 'HTML', extensions: ['htm', 'html'] }]
-  }).then(function (res) {
-    if (res.canceled || !res.filePath) return;
-    tab.wc.savePage(res.filePath, 'HTMLComplete').catch(function () {});
-  });
+  dialog
+    .showSaveDialog({
+      title: 'Save Web Page',
+      defaultPath: suggested,
+      filters: [{ name: 'HTML', extensions: ['htm', 'html'] }]
+    })
+    .then(function (res) {
+      if (res.canceled || !res.filePath) return;
+      return tab.wc.savePage(res.filePath, 'HTMLComplete');
+    })
+    .catch(function () {});
 }
 
 function viewSource(tab, ctx) {

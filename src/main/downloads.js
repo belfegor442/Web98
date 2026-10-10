@@ -8,6 +8,7 @@
 var path = require('path');
 var fs = require('fs');
 var { shell, dialog, app } = require('electron');
+var { sanitizeFilename } = require('../shared/validate');
 
 var DANGEROUS_EXT = [
   '.exe', '.msi', '.bat', '.cmd', '.com', '.scr', '.pif',
@@ -51,8 +52,14 @@ function createDownloads(opts) {
 
   opts.session.on('will-download', function (event, item) {
     var dir = opts.downloadsDir() || app.getPath('downloads');
-    var filename = item.getFilename() || 'download';
+    var filename = sanitizeFilename(item.getFilename());
     var savePath = uniquePath(dir, filename);
+    // Containment: the final path must stay inside the downloads directory.
+    var resolvedDir = path.resolve(dir);
+    var resolvedPath = path.resolve(savePath);
+    if (resolvedPath !== resolvedDir && resolvedPath.indexOf(resolvedDir + path.sep) !== 0) {
+      savePath = path.join(resolvedDir, filename);
+    }
     try {
       fs.mkdirSync(dir, { recursive: true });
     } catch (e) { /* noop */ }
@@ -74,6 +81,9 @@ function createDownloads(opts) {
     push();
 
     item.on('updated', function (e, state) {
+      if (state === 'progressing' && typeof item.isPaused === 'function' && item.isPaused()) {
+        state = 'paused';
+      }
       d.state = state;
       d.received = item.getReceivedBytes();
       d.total = item.getTotalBytes() || d.total;
@@ -84,6 +94,7 @@ function createDownloads(opts) {
       d.state = state;
       d.received = item.getReceivedBytes();
       d.endTime = Date.now();
+      d.item = null;
       push();
       if (state === 'completed' && opts.onCompleted) opts.onCompleted(d);
     });
@@ -95,21 +106,25 @@ function createDownloads(opts) {
 
   function pause(id) {
     var d = get(id);
-    if (d && d.state === 'progressing' && d.item.canPause()) d.item.pause();
+    if (d && d.item && d.state === 'progressing' && d.item.canPause()) d.item.pause();
     push();
   }
   function resume(id) {
     var d = get(id);
-    if (d && d.state === 'paused' && d.item.canResume()) d.item.resume();
+    if (d && d.item && d.state === 'paused' && d.item.canResume()) d.item.resume();
     push();
   }
   function cancel(id) {
     var d = get(id);
-    if (d && d.state === 'progressing') d.item.cancel();
+    if (d && d.item && (d.state === 'progressing' || d.state === 'paused')) d.item.cancel();
     push();
   }
   function remove(id) {
-    items = items.filter(function (d) { return d.id !== id; });
+    var d = get(id);
+    if (d && d.item && (d.state === 'progressing' || d.state === 'paused')) {
+      try { d.item.cancel(); } catch (e) { /* noop */ }
+    }
+    items = items.filter(function (entry) { return entry.id !== id; });
     push();
   }
   function clearFinished() {

@@ -429,6 +429,165 @@ function runMenus() {
   });
 }
 
+/* -------------------------------- safeurl --------------------------------- */
+var safeurl = require('../../src/shared/safeurl');
+
+function runSafeUrl() {
+  test('safeurl: isLoadableUrl accepts web, file, data, about:blank', function () {
+    ok(safeurl.isLoadableUrl('https://example.com/'), 'https');
+    ok(safeurl.isLoadableUrl('http://example.com/'), 'http');
+    ok(safeurl.isLoadableUrl('ftp://files.example/'), 'ftp');
+    ok(safeurl.isLoadableUrl('file:///C:/app/page.html'), 'file');
+    ok(safeurl.isLoadableUrl('data:text/html,<b>x</b>'), 'data');
+    ok(safeurl.isLoadableUrl('about:blank'), 'about:blank');
+    ok(safeurl.isLoadableUrl('view-source:https://example.com/'), 'view-source');
+  });
+
+  test('safeurl: isLoadableUrl rejects javascript, chrome, blob, garbage', function () {
+    eq(safeurl.isLoadableUrl('javascript:alert(1)'), false, 'javascript');
+    eq(safeurl.isLoadableUrl('JaVaScRiPt:alert(1)'), false, 'mixed case javascript');
+    eq(safeurl.isLoadableUrl('java\nscript:alert(1)'), false, 'control char split');
+    eq(safeurl.isLoadableUrl('chrome://settings'), false, 'chrome');
+    eq(safeurl.isLoadableUrl('devtools://x'), false, 'devtools');
+    eq(safeurl.isLoadableUrl('blob:https://x/uuid'), false, 'blob from address');
+    eq(safeurl.isLoadableUrl('about:config'), false, 'about:config');
+    eq(safeurl.isLoadableUrl(''), false, 'empty');
+    eq(safeurl.isLoadableUrl('not a url'), false, 'search phrase');
+    eq(safeurl.isLoadableUrl('mailto:a@b.c'), false, 'mailto not loadable');
+    eq(safeurl.isLoadableUrl(null), false, 'null');
+    eq(safeurl.isLoadableUrl('https://example.com/\x00evil'), false, 'nul byte');
+  });
+
+  test('safeurl: isAllowedNavigation blocks file: from web pages', function () {
+    ok(safeurl.isAllowedNavigation('https://x.example/', { fromWeb: true }), 'https from web');
+    eq(safeurl.isAllowedNavigation('file:///etc/passwd', { fromWeb: true }), false, 'file from web');
+    ok(safeurl.isAllowedNavigation('file:///C:/app/', { fromWeb: false }), 'file from local page');
+    eq(safeurl.isAllowedNavigation('javascript:alert(1)', { fromWeb: false }), false, 'javascript never');
+    eq(safeurl.isAllowedNavigation('blob:https://x/u', { fromWeb: false }), false, 'blob not from web');
+    ok(safeurl.isAllowedNavigation('blob:https://x/u', { fromWeb: true }), 'blob from web');
+    ok(safeurl.isAllowedNavigation('about:blank', { fromWeb: true }), 'about:blank');
+    eq(safeurl.isAllowedNavigation('mailto:a@b.c', { fromWeb: true }), false, 'mailto not navigable');
+  });
+
+  test('safeurl: isSafeExternalUrl only mailto/tel', function () {
+    ok(safeurl.isSafeExternalUrl('mailto:a@b.c'), 'mailto');
+    ok(safeurl.isSafeExternalUrl('tel:+15551212'), 'tel');
+    eq(safeurl.isSafeExternalUrl('https://evil.example/'), false, 'https not via openExternal');
+    eq(safeurl.isSafeExternalUrl('file:///C:/x'), false, 'file not external');
+    eq(safeurl.isSafeExternalUrl('mailto:'), false, 'empty mailto body');
+    eq(safeurl.isSafeExternalUrl('mailto:a@b.c\nBcc:x@y.z'), false, 'header injection');
+    eq(safeurl.isSafeExternalUrl(''), false, 'empty');
+  });
+
+  test('safeurl: isBookmarkUrl and isSearchTemplate', function () {
+    ok(safeurl.isBookmarkUrl('https://x.example/'), 'bookmark https');
+    ok(safeurl.isBookmarkUrl('file:///C:/page.html'), 'bookmark file');
+    eq(safeurl.isBookmarkUrl('javascript:alert(1)'), false, 'no javascript bookmarks');
+    ok(safeurl.isSearchTemplate('https://ddg.com/?q=%s'), 'template https');
+    eq(safeurl.isSearchTemplate('javascript:alert(%s)'), false, 'no javascript template');
+    eq(safeurl.isSearchTemplate('https://x/?q=' + 'a'.repeat(600)), false, 'template length cap');
+  });
+
+  test('safeurl: sanitizeSessionList filters and caps', function () {
+    eq(safeurl.sanitizeSessionList(null), [], 'null');
+    eq(safeurl.sanitizeSessionList('x'), [], 'non-array');
+    var out = safeurl.sanitizeSessionList([
+      'https://a.example/',
+      'javascript:alert(1)',
+      'file:///C:/page.html',
+      'chrome://x',
+      42,
+      'about:blank'
+    ], 40);
+    eq(out, ['https://a.example/', 'file:///C:/page.html', 'about:blank'], 'bad entries dropped');
+    var big = [];
+    for (var i = 0; i < 100; i++) big.push('https://x' + i + '.example/');
+    eq(safeurl.sanitizeSessionList(big, 40).length, 40, 'capped');
+  });
+}
+
+/* -------------------------------- validate -------------------------------- */
+var validate = require('../../src/shared/validate');
+
+function runValidate() {
+  test('validate: sanitizeFilename strips paths and bad chars', function () {
+    eq(validate.sanitizeFilename('report.pdf'), 'report.pdf', 'plain name');
+    eq(validate.sanitizeFilename('..\\..\\evil.exe'), 'evil.exe', 'parent traversal');
+    eq(validate.sanitizeFilename('../../etc/passwd'), 'passwd', 'posix traversal');
+    eq(validate.sanitizeFilename('C:\\Windows\\System32\\cmd.bat'), 'cmd.bat', 'absolute path');
+    eq(validate.sanitizeFilename('a<b>:c"d|e?f*.txt'), 'a_b__c_d_e_f_.txt', 'reserved chars');
+    eq(validate.sanitizeFilename('...'), 'download', 'dot-only');
+    eq(validate.sanitizeFilename(''), 'download', 'empty');
+    eq(validate.sanitizeFilename(null), 'download', 'null');
+    var long = 'x'.repeat(300) + '.html';
+    ok(validate.sanitizeFilename(long).length <= 120, 'length capped');
+    ok(/\.[a-z]+$/.test(validate.sanitizeFilename(long)), 'extension kept');
+  });
+
+  test('validate: sanitizeBookmark accepts safe entries, rejects javascript:', function () {
+    var b = validate.sanitizeBookmark({ name: 'Site', url: 'https://x.example/', parent: 3 });
+    eq(b, { name: 'Site', url: 'https://x.example/', parent: 3 }, 'valid bookmark');
+    eq(validate.sanitizeBookmark({ name: 'X', url: 'javascript:alert(1)', parent: 0 }), null, 'javascript url rejected');
+    eq(validate.sanitizeBookmark({ url: 'data:text/html,x' }), null, 'data url rejected');
+    var folder = validate.sanitizeBookmark({ name: 'Folder', url: '', parent: 0 });
+    ok(folder && folder.name === 'Folder', 'empty url folder allowed');
+    eq(validate.sanitizeBookmark('not an object'), null, 'non-object');
+  });
+
+  test('validate: sanitizeBookmarkList drops bad rows and caps size', function () {
+    var list = validate.sanitizeBookmarkList([
+      { name: 'A', url: 'https://a.example/', parent: 0 },
+      { name: 'B', url: 'javascript:alert(1)', parent: 0 },
+      { name: 'C', url: 'https://c.example/', parent: 0 }
+    ]);
+    eq(list.length, 2, 'javascript row dropped');
+    eq(validate.sanitizeBookmarkList('x'), [], 'non-array');
+  });
+
+  test('validate: sanitizeSettingsPatch whitelist', function () {
+    var r = validate.sanitizeSettingsPatch({
+      homepage: 'https://ok.example/',
+      zoom: 99,
+      statusBar: true,
+      permissions: { evil: true },
+      lastSession: { urls: ['javascript:alert(1)'] },
+      javascript: 'alert(1)',
+      searchEngine: 'Custom'
+    });
+    eq(r.patch.homepage, 'https://ok.example/', 'homepage kept');
+    eq(r.patch.zoom, 3, 'zoom clamped');
+    eq(r.patch.statusBar, true, 'boolean kept');
+    eq(r.patch.searchEngine, 'Custom', 'searchEngine kept');
+    eq(r.patch.permissions, undefined, 'permissions never settable from renderer');
+    eq(r.patch.lastSession, undefined, 'lastSession never settable');
+    eq(r.patch.javascript, undefined, 'unknown key dropped');
+    ok(r.rejected.indexOf('permissions') !== -1, 'permissions rejected');
+    ok(r.rejected.indexOf('lastSession') !== -1, 'lastSession rejected');
+  });
+
+  test('validate: sanitizeSettingsPatch rejects bad homepage and engines', function () {
+    var r = validate.sanitizeSettingsPatch({ homepage: 'javascript:alert(1)' });
+    eq(r.patch.homepage, undefined, 'javascript homepage rejected');
+    ok(r.rejected.indexOf('homepage') !== -1, 'homepage rejected');
+    var r2 = validate.sanitizeSettingsPatch({
+      engines: [{ name: 'Evil', template: 'javascript:alert(%s)' }]
+    });
+    eq(r2.patch.engines, undefined, 'javascript engine template dropped');
+    var r3 = validate.sanitizeSettingsPatch({ zoom: 'abc' });
+    eq(r3.patch.zoom, 1, 'non-numeric zoom falls back');
+  });
+
+  test('validate: grant origins and permission names', function () {
+    ok(validate.isGrantOrigin('https://x.example'), 'https origin');
+    ok(validate.isGrantOrigin('null'), 'null origin');
+    eq(validate.isGrantOrigin('javascript:alert(1)'), false, 'javascript not origin');
+    eq(validate.isGrantOrigin(42), false, 'non-string');
+    ok(validate.isPermissionName('geolocation'), 'geolocation');
+    eq(validate.isPermissionName('drop tables;'), false, 'sql-ish rejected');
+    eq(validate.isPermissionName(''), false, 'empty');
+  });
+}
+
 /* --------------------------------- main ----------------------------------- */
 function runAll() {
   console.log('Web98 unit tests');
@@ -436,6 +595,8 @@ function runAll() {
   runStore();
   runSettings();
   runMenus();
+  runSafeUrl();
+  runValidate();
 
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');
