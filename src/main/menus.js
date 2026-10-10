@@ -115,11 +115,9 @@ function runCommand(name, arg, ctx) {
     }
     case 'view:toolbar':
       ctx.settings.set('toolbarVisible', !ctx.settings.get('toolbarVisible'));
-      ctx.state.emitRenderer('settings:changed', ctx.settings.get());
       return true;
     case 'view:statusbar':
       ctx.settings.set('statusBar', !ctx.settings.get('statusBar'));
-      ctx.state.emitRenderer('settings:changed', ctx.settings.get());
       return true;
     case 'view:devtools':
       if (tab) tab.wc.toggleDevTools();

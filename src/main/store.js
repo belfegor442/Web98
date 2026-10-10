@@ -17,10 +17,13 @@ var SCHEMA = [
   'CREATE INDEX IF NOT EXISTS bookmarks_parent ON bookmarks (parent, position)'
 ];
 
-function openStore(dbPath) {
+function openStore(dbPath, opts) {
   var db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.exec(SCHEMA.join(';\n'));
+
+  var historyLimit = Math.max(100, Number(opts && opts.historyLimit) || 5000);
+  var historyCount = 0;
 
   var stmts = {
     getSetting: db.prepare('SELECT value FROM settings WHERE key = ?'),
@@ -56,15 +59,19 @@ function openStore(dbPath) {
     getBookmark: db.prepare('SELECT id, parent, name, url, position FROM bookmarks WHERE id = ?'),
     renameBookmark: db.prepare('UPDATE bookmarks SET name = ?, url = ? WHERE id = ?'),
     moveBookmark: db.prepare('UPDATE bookmarks SET parent = ?, position = ? WHERE id = ?'),
-    delBookmark: db.prepare('DELETE FROM bookmarks WHERE id = ?'),
     delBookmarkTree: db.prepare(
-      'DELETE FROM bookmarks WHERE id = @id OR parent IN (SELECT id FROM bookmarks WHERE parent = @id)'
+      'WITH RECURSIVE sub(id) AS (' +
+      'SELECT id FROM bookmarks WHERE id = @id ' +
+      'UNION SELECT b.id FROM bookmarks b JOIN sub ON b.parent = sub.id' +
+      ') DELETE FROM bookmarks WHERE id IN (SELECT id FROM sub)'
     ),
     nextBookmarkPos: db.prepare(
       'SELECT COALESCE(MAX(position), -1) + 1 AS p FROM bookmarks WHERE parent = ?'
     ),
     countBookmarks: db.prepare('SELECT COUNT(*) AS n FROM bookmarks')
   };
+
+  historyCount = stmts.countHistory.get().n;
 
   var api = {
     db: db,
@@ -100,6 +107,11 @@ function openStore(dbPath) {
     /* ------------------------------ history ------------------------------ */
     addHistory: function (url, title, ts) {
       stmts.addHistory.run(url, title || '', ts || Date.now());
+      historyCount++;
+      if (historyCount > historyLimit) {
+        stmts.pruneHistory.run(historyLimit);
+        historyCount = historyLimit;
+      }
     },
     history: function (opts) {
       opts = opts || {};
@@ -114,16 +126,20 @@ function openStore(dbPath) {
       return stmts.historyRecent.all(limit);
     },
     deleteHistory: function (id) {
-      stmts.delHistory.run(id);
+      var info = stmts.delHistory.run(id);
+      if (info.changes && historyCount > 0) historyCount--;
     },
     clearHistory: function () {
       stmts.clearHistory.run();
+      historyCount = 0;
     },
     countHistory: function () {
       return stmts.countHistory.get().n;
     },
     pruneHistory: function (maxRows) {
-      stmts.pruneHistory.run(maxRows);
+      var limit = Math.max(1, Number(maxRows) || historyLimit);
+      stmts.pruneHistory.run(limit);
+      historyCount = stmts.countHistory.get().n;
     },
 
     /* ------------------------------ bookmarks ---------------------------- */
@@ -155,7 +171,7 @@ function openStore(dbPath) {
       stmts.moveBookmark.run(parent, position, id);
     },
     deleteBookmark: function (id) {
-      stmts.delBookmark.run(id);
+      stmts.delBookmarkTree.run({ id: id });
     },
     countBookmarks: function () {
       return stmts.countBookmarks.get().n;

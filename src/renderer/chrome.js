@@ -52,7 +52,12 @@
   }
   function floatOpen() { return !!activeFloat; }
 
-  function pushBounds() {
+  var lastPushedBoundsKey = '';
+  var lastPushedPopup = null;
+  var pushRaf = 0;
+  var pushTrailing = null;
+
+  function pushBoundsNow() {
     var ghost = $('content-ghost');
     if (!ghost) return;
     var r = ghost.getBoundingClientRect();
@@ -74,8 +79,31 @@
       }
     }
     lastBounds = { x: x, y: y, width: w, height: h };
-    invoke('chrome:bounds', lastBounds);
-    send('chrome:popup', { open: hide });
+    var key = x + ',' + y + ',' + w + ',' + h;
+    if (key !== lastPushedBoundsKey) {
+      lastPushedBoundsKey = key;
+      invoke('chrome:bounds', lastBounds);
+    }
+    if (hide !== lastPushedPopup) {
+      lastPushedPopup = hide;
+      send('chrome:popup', { open: hide });
+    }
+  }
+
+  function pushBounds() {
+    // Coalesce bursts (resize streams, float open/close) to at most one
+    // computation per frame plus a trailing flush after the stream settles.
+    if (!pushRaf && typeof requestAnimationFrame === 'function') {
+      pushRaf = requestAnimationFrame(function () {
+        pushRaf = 0;
+        pushBoundsNow();
+      });
+    }
+    clearTimeout(pushTrailing);
+    pushTrailing = setTimeout(function () {
+      pushTrailing = null;
+      pushBoundsNow();
+    }, 120);
   }
 
   /* --------------------------- window controls ---------------------------- */
@@ -426,44 +454,79 @@
   $('btn-links').addEventListener('click', function () { togglePanel('favorites'); });
 
   /* ------------------------------ tabs ------------------------------------ */
+  function byTabId(id) {
+    for (var i = 0; i < tabs.length; i++) {
+      if (tabs[i].id === id) return tabs[i];
+    }
+    return null;
+  }
+
   function renderTabs() {
     var strip = $('tabstrip');
-    strip.textContent = '';
-    tabs.forEach(function (t) {
-      var tab = el('div', 'ow-tab' + (t.active ? ' is-active' : '') + (t.loading ? ' is-loading' : ''), strip);
-      tab.title = t.title || t.url;
-      var spin = el('span', 'ow-tab__spinner' + (t.loading ? ' is-active' : ''), tab);
-      void spin;
-      var icon = el('span', 'ow-tab__icon', tab);
-      if (t.favicon && /^data:|^https?:/i.test(t.favicon)) {
-        icon.style.backgroundImage = 'url("' + t.favicon + '")';
+    var rows = strip._rows;
+    var reusable = !!rows && rows.length === tabs.length;
+    if (reusable) {
+      for (var i = 0; i < tabs.length; i++) {
+        if (rows[i].id !== tabs[i].id) { reusable = false; break; }
       }
-      el('span', 'ow-tab__title', tab).textContent = t.title || t.url || 'New Tab';
-      var close = el('button', 'ow-tab__close', tab);
-      close.textContent = '\u00d7';
-      close.title = 'Close';
-      close.addEventListener('click', function (e) {
-        e.stopPropagation();
-        invoke('tabs:close', { id: t.id });
-      });
-      tab.addEventListener('mousedown', function (e) {
-        if (e.button === 1) {
+    }
+    if (!reusable) {
+      strip.textContent = '';
+      rows = [];
+      tabs.forEach(function (t) {
+        var tab = el('div', 'ow-tab', strip);
+        var spinner = el('span', 'ow-tab__spinner', tab);
+        var icon = el('span', 'ow-tab__icon', tab);
+        var titleEl = el('span', 'ow-tab__title', tab);
+        var close = el('button', 'ow-tab__close', tab);
+        close.textContent = '\u00d7';
+        close.title = 'Close';
+        var row = { id: t.id, el: tab, spinner: spinner, icon: icon, titleEl: titleEl };
+        close.addEventListener('click', function (e) {
+          e.stopPropagation();
+          invoke('tabs:close', { id: row.id });
+        });
+        tab.addEventListener('mousedown', function (e) {
+          if (e.button === 1) {
+            e.preventDefault();
+            invoke('tabs:close', { id: row.id });
+            return;
+          }
+          if (e.button === 0) {
+            var cur = byTabId(row.id);
+            if (cur && !cur.active) invoke('tabs:activate', { id: row.id });
+          }
+        });
+        tab.addEventListener('contextmenu', function (e) {
           e.preventDefault();
-          invoke('tabs:close', { id: t.id });
-          return;
-        }
-        if (e.button === 0 && !t.active) invoke('tabs:activate', { id: t.id });
+          var cur = byTabId(row.id);
+          if (cur) showTabMenu(e, cur);
+        });
+        rows.push(row);
       });
-      tab.addEventListener('contextmenu', function (e) {
-        e.preventDefault();
-        showTabMenu(e, t);
+      strip._rows = rows;
+      var plus = el('button', 'ow-tab-new', strip);
+      plus.textContent = '+';
+      plus.title = 'New Tab (Ctrl+T)';
+      plus.addEventListener('click', function () {
+        invoke('tabs:create', {});
       });
-    });
-    var plus = el('button', 'ow-tab-new', strip);
-    plus.textContent = '+';
-    plus.title = 'New Tab (Ctrl+T)';
-    plus.addEventListener('click', function () {
-      invoke('tabs:create', {});
+    }
+    tabs.forEach(function (t, i) {
+      var row = rows[i];
+      var cls = 'ow-tab' + (t.active ? ' is-active' : '') + (t.loading ? ' is-loading' : '');
+      if (row.el.className !== cls) row.el.className = cls;
+      row.el.title = t.title || t.url;
+      var spinCls = 'ow-tab__spinner' + (t.loading ? ' is-active' : '');
+      if (row.spinner.className !== spinCls) row.spinner.className = spinCls;
+      var bg = (t.favicon && /^data:|^https?:/i.test(t.favicon)) ? 'url("' + t.favicon + '")' : '';
+      if (bg) {
+        if (row.icon.style.backgroundImage !== bg) row.icon.style.backgroundImage = bg;
+      } else if (row.icon.style.backgroundImage) {
+        row.icon.style.backgroundImage = '';
+      }
+      var txt = t.title || t.url || 'New Tab';
+      if (row.titleEl.textContent !== txt) row.titleEl.textContent = txt;
     });
   }
 
@@ -744,16 +807,22 @@
 
   /* --------------------------- global events ------------------------------ */
   api.on('tabs', function (list) {
+    tabsPrimed = true;
     tabs = list || [];
     renderTabs();
   });
 
+  var lastWinTitle = '';
+  var tabsPrimed = false;
   api.on('nav', function (n) {
     nav = n;
     if (document.activeElement !== addressInput) addressInput.value = n.url || '';
     var title = (n.title || 'New Tab') + ' - Web98';
-    $('win-title').textContent = title;
-    invoke('win:title', title);
+    if (title !== lastWinTitle) {
+      lastWinTitle = title;
+      $('win-title').textContent = title;
+      invoke('win:title', title);
+    }
     $('status').textContent = n.loading
       ? 'Opening page ' + (n.url || '') + '...'
       : n.error ? (n.error.desc || n.error.url || 'Error') : 'Done';
@@ -761,9 +830,6 @@
     $('progress').classList.toggle('is-active', n.loading);
     $('progress-bar').style.width = Math.round((n.progress || 0) * 100) + '%';
     $('throbber').classList.toggle('is-active', n.loading);
-    document.querySelector('.ow-toolbar').style.display =
-      settings && !settings.toolbarVisible ? 'none' : '';
-    document.querySelector('.ow-statusbar').hidden = !!(settings && settings.statusBar === false);
     updateToolbar();
   });
 
@@ -829,14 +895,18 @@
   function boot() {
     buildMenus();
     buildToolbar();
-    return invoke('settings:get').then(function (s) {
-      settings = s;
+    return Promise.all([
+      invoke('settings:get'),
+      invoke('tabs:list')
+    ]).then(function (r) {
+      settings = r[0];
+      // A live 'tabs' push may be newer than this reply; don't clobber it.
+      if (!tabsPrimed) {
+        tabs = r[1] || [];
+        renderTabs();
+      }
       applySettings();
       refreshBookmarks();
-      return invoke('tabs:list');
-    }).then(function (list) {
-      tabs = list || [];
-      renderTabs();
       pushBounds();
     });
   }

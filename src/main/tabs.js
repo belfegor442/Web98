@@ -30,6 +30,12 @@ function createTabManager(opts) {
   var bounds = { x: 0, y: 0, width: 0, height: 0 };
   var hiddenForPopup = false;
 
+  // Deferred background loads (session restore): tabs are created instantly
+  // but their URL load is queued and flushed one at a time so startup stays
+  // responsive. Activating a queued tab loads it immediately.
+  var pendingLoads = [];
+  var flushTimer = null;
+
   function snapshot() {
     return tabs.map(function (t) {
       return {
@@ -44,24 +50,51 @@ function createTabManager(opts) {
     });
   }
 
+  var tabsEmitScheduled = false;
+  var lastTabsJson = '';
+
   function emitTabs() {
-    emit('tabs', snapshot());
+    if (tabsEmitScheduled) return;
+    tabsEmitScheduled = true;
+    setImmediate(function () {
+      tabsEmitScheduled = false;
+      var snap = snapshot();
+      var json = JSON.stringify(snap);
+      if (json === lastTabsJson) return;
+      lastTabsJson = json;
+      emit('tabs', snap);
+    });
   }
+
+  var navEmitScheduled = false;
+  var navPendingTab = null;
+  var lastNavJson = '';
 
   function navState(tab) {
     if (!tab || tab.id !== activeId) return;
-    var url = tab.url || '';
-    emit('nav', {
-      tabId: tab.id,
-      url: url,
-      title: tab.title,
-      loading: tab.loading,
-      progress: tab.progress,
-      canBack: canGoBack(tab),
-      canForward: canGoForward(tab),
-      zoom: tab.zoom,
-      zone: zoneFor(url),
-      error: tab.error || null
+    navPendingTab = tab;
+    if (navEmitScheduled) return;
+    navEmitScheduled = true;
+    setImmediate(function () {
+      navEmitScheduled = false;
+      var t = navPendingTab;
+      if (!t || t.id !== activeId) return;
+      var payload = {
+        tabId: t.id,
+        url: t.url || '',
+        title: t.title,
+        loading: t.loading,
+        progress: t.progress,
+        canBack: canGoBack(t),
+        canForward: canGoForward(t),
+        zoom: t.zoom,
+        zone: zoneFor(t.url || ''),
+        error: t.error || null
+      };
+      var json = JSON.stringify(payload);
+      if (json === lastNavJson) return;
+      lastNavJson = json;
+      emit('nav', payload);
     });
   }
 
@@ -121,6 +154,7 @@ function createTabManager(opts) {
     wc.on('did-start-loading', function () {
       tab.loading = true;
       tab.progress = 0.05;
+      tab.progressBucket = -1;
       tab.error = null;
       emitTabs();
       navState(tab);
@@ -128,6 +162,9 @@ function createTabManager(opts) {
 
     wc.on('loading-progress', function (e, p) {
       tab.progress = p;
+      var bucket = Math.round(p * 20); // 5% steps: progress is cosmetic
+      if (bucket === tab.progressBucket) return;
+      tab.progressBucket = bucket;
       navState(tab);
     });
 
@@ -290,6 +327,7 @@ function createTabManager(opts) {
 
   function load(tab, url) {
     if (!tab || !tab.wc) return false;
+    tab.pendingUrl = null;
     if (isSafeExternalUrl(url)) {
       shell.openExternal(url);
       return true;
@@ -305,6 +343,52 @@ function createTabManager(opts) {
     return true;
   }
 
+  /** Create a tab that shows `url` but defers its load to the background queue. */
+  function createBackground(url) {
+    var tab = create('', false);
+    if (url) {
+      tab.url = url;
+      tab.pendingUrl = url;
+      pendingLoads.push({ tabId: tab.id, url: url });
+      scheduleFlush(400);
+      emitTabs();
+    }
+    return tab;
+  }
+
+  function scheduleFlush(delay) {
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = setTimeout(flushPending, delay == null ? 200 : delay);
+  }
+
+  function flushPending() {
+    flushTimer = null;
+    pendingLoads = pendingLoads.filter(function (job) {
+      var t = get(job.tabId);
+      return t && t.pendingUrl === job.url;
+    });
+    if (!pendingLoads.length) return;
+    var job = pendingLoads.shift();
+    var tab = get(job.tabId);
+    if (!tab) return scheduleFlush(100);
+    tab.pendingUrl = null;
+    var finished = false;
+    function done() {
+      if (finished) return;
+      finished = true;
+      clearTimeout(guard);
+      tab.wc.removeListener('did-finish-load', done);
+      tab.wc.removeListener('did-fail-load', done);
+      tab.wc.removeListener('destroyed', done);
+      scheduleFlush(200);
+    }
+    var guard = setTimeout(done, 15000);
+    tab.wc.on('did-finish-load', done);
+    tab.wc.on('did-fail-load', done);
+    tab.wc.on('destroyed', done);
+    load(tab, job.url);
+  }
+
   function get(id) {
     return tabs.find(function (t) { return t.id === id; }) || null;
   }
@@ -316,6 +400,12 @@ function createTabManager(opts) {
   function setActive(id) {
     var tab = get(id);
     if (!tab) return;
+    if (tab.pendingUrl) {
+      // User is switching to a queued background tab: load it now.
+      var queued = tab.pendingUrl;
+      tab.pendingUrl = null;
+      load(tab, queued);
+    }
     if (activeId === id) {
       tab.view.setVisible(!hiddenForPopup);
       tab.wc.focus();
@@ -394,6 +484,7 @@ function createTabManager(opts) {
 
   return {
     create: create,
+    createBackground: createBackground,
     close: close,
     setActive: setActive,
     get: get,

@@ -102,9 +102,12 @@ function check(name, ok, extra) {
 }
 
 async function main() {
+  /* fresh profile per run: tests must not read or write the user's data */
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'web98-smoke-'));
   const proc = spawn(ELECTRON, ['.', `--remote-debugging-port=${PORT}`], {
     cwd: ROOT,
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: Object.assign({}, process.env, { WEB98_USER_DATA: profileDir })
   });
   let bootLog = '';
   proc.stdout.on('data', (d) => { bootLog += d; });
@@ -140,6 +143,15 @@ async function main() {
     chrome.on('pageerror', (err) => errors.push(String(err)));
 
     await sleep(800);
+    /* wait for boot to finish rendering the first tab (contention can
+       delay it past the fixed sleeps; report a normal check failure
+       rather than aborting the whole run if it never appears) */
+    try {
+      await chrome.waitForFunction(
+        () => document.querySelectorAll('.ow-tab').length >= 1,
+        { timeout: 10000 }
+      );
+    } catch (e) { /* fall through — the checks below report got 0 */ }
 
     /* structure present */
     const structure = await chrome.evaluate(() => {
@@ -348,6 +360,58 @@ async function main() {
       );
     }
 
+    /* resources: creating tabs adds pages; closing them releases them */
+    const localTarget = 'file:///' + path.join(ROOT, 'src', 'renderer', 'startpage.html').replace(/\\/g, '/');
+    const pagesBase = (await browser.pages()).length;
+    const stripBase = await chrome.evaluate(() => document.querySelectorAll('.ow-tab').length);
+    for (let i = 0; i < 2; i++) {
+      let created = false;
+      for (let attempt = 0; attempt < 3 && !created; attempt++) {
+        const before = await chrome.evaluate(() => document.querySelectorAll('.ow-tab').length);
+        await pressCtrl(chrome, 'KeyT', 84);
+        try {
+          await chrome.waitForFunction(
+            (n) => document.querySelectorAll('.ow-tab').length === n + 1,
+            { timeout: 2000 },
+            before
+          );
+          created = true;
+        } catch (e) { /* occluded key drop — retry */ }
+      }
+      if (!created) break;
+      /* give the new tab a real page so its target/process is observable */
+      await chrome.evaluate((u, n) => {
+        const input = document.getElementById('address');
+        input.value = u + '#' + n;
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      }, localTarget, i);
+      await chrome.waitForFunction(() => {
+        const el = document.getElementById('status');
+        return el && el.textContent === 'Done';
+      }, { timeout: 5000 });
+    }
+    const stripOpened = await chrome.evaluate(() => document.querySelectorAll('.ow-tab').length);
+    const pagesOpened = (await browser.pages()).length;
+    check(
+      'two extra tabs created with real pages',
+      stripOpened === stripBase + 2 && pagesOpened === pagesBase + 2,
+      `strip=${stripOpened} pages=${pagesOpened} (base ${stripBase}/${pagesBase})`
+    );
+    for (let i = 0; i < 2; i++) {
+      await chrome.evaluate(() => {
+        const closes = document.querySelectorAll('.ow-tab__close');
+        if (closes.length > 1) closes[closes.length - 1].click();
+      });
+      await sleep(500);
+    }
+    const stripClosed = await chrome.evaluate(() => document.querySelectorAll('.ow-tab').length);
+    const pagesClosed = (await browser.pages()).length;
+    check(
+      'closing tabs releases their pages',
+      stripClosed === stripBase && pagesClosed === pagesBase,
+      `strip=${stripClosed} pages=${pagesClosed} (base ${stripBase}/${pagesBase})`
+    );
+
     /* no renderer console errors */
     const realErrors = errors.filter(
       (e) =>
@@ -368,6 +432,7 @@ async function main() {
         try { process.kill(proc.pid); } catch (e) { /* ignore */ }
       }
     }
+    try { fs.rmSync(profileDir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
   }
 
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nALL E2E CHECKS PASSED');

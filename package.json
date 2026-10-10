@@ -9,10 +9,14 @@
     "start": "electron .",
     "test": "electron test/unit/runner.js",
     "test:e2e": "node test/e2e/smoke.js",
+    "test:restore": "node test/e2e/restore.js",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "bench": "node test/bench/startup.js",
-    "dist": "electron-builder --win",
-    "dist:portable": "electron-builder --win portable"
+    "dist": "electron-builder --win nsis portable",
+    "dist:win-arm64": "electron-builder --win nsis portable --arm64",
+    "dist:linux": "electron-builder --linux deb",
+    "dist:linux-arm64": "electron-builder --linux deb --arm64",
+    "dist:mac": "electron-builder --mac dmg"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3"
@@ -27,6 +31,8 @@
     "appId": "com.web98.browser",
     "productName": "Web98",
     "copyright": "Copyright © 2026 Web98",
+    "npmRebuild": false,
+    "artifactName": "${productName} ${version} ${arch}.${ext}",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -42,12 +48,23 @@
     ],
     "win": {
       "icon": "build/icon.ico",
+      "target": ["nsis", "portable"]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": ["AppImage", "deb"],
+      "category": "Network",
+      "maintainer": "Web98 <web98@localhost>"
+    },
+    "mac": {
+      "icon": "build/icon.png",
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
-      ]
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ],
+      "category": "public.app-category.utilities"
     },
     "nsis": {
+      "artifactName": "${productName} Setup ${version} ${arch}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

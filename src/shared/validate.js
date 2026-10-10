@@ -31,7 +31,8 @@ function sanitizeText(v, max) {
 
 /**
  * Filesystem-safe download filename: no directories, no reserved
- * characters, no dot-only names.
+ * characters, no dot-only names, no Windows reserved device names,
+ * no trailing dots/spaces (Windows rejects those on create).
  */
 function sanitizeFilename(name) {
   var s = typeof name === 'string' ? name : '';
@@ -40,7 +41,10 @@ function sanitizeFilename(name) {
   var parts = s.split(/[\\/]+/);
   s = parts[parts.length - 1];
   s = s.replace(/[<>:"|?*]/g, '_').replace(/^\.+/, '').trim();
-  if (!s || s === '.' || s === '..') s = 'download';
+  s = s.replace(/[. ]+$/g, ''); // Windows drops trailing dots/spaces silently
+  if (!s) s = 'download';
+  var stem = s.split('.')[0];
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(stem)) s = '_' + s;
   if (s.length > 120) {
     var ext = (s.match(/\.[A-Za-z0-9]{1,12}$/) || [''])[0];
     s = s.slice(0, 120 - ext.length) + ext;

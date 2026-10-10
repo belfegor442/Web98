@@ -66,7 +66,9 @@ function createWindowManager(deps) {
         var activeIdx = Number(sessionData && sessionData.active) || 0;
         if (activeIdx < 0 || activeIdx >= urls.length) activeIdx = 0;
         urls.forEach(function (u, i) {
-          state.tabs.create(u, i === activeIdx);
+          // Active tab loads now; background tabs queue for staggered loads.
+          if (i === activeIdx) state.tabs.create(u, true);
+          else state.tabs.createBackground(u);
         });
         if (state.tabs.count() > 0) {
           var list = state.tabs.list();
@@ -104,6 +106,11 @@ function createWindowManager(deps) {
       if (deps.onKey && deps.onKey(input, state)) e.preventDefault();
     });
 
+    win.on('close', function () {
+      // Save while the state is still registered: quitting via the window
+      // X runs before-quit only after all windows are gone.
+      if (deps.onWindowClosing) deps.onWindowClosing();
+    });
     win.on('closed', function () {
       var idx = mainStates.indexOf(state);
       if (idx !== -1) mainStates.splice(idx, 1);

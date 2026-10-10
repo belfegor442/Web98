@@ -17,6 +17,12 @@ var menus = require('./menus');
 
 app.setName('Web98');
 
+// Test/bench isolation: when set, all profile data (settings, history,
+// session, cookies) lives in this directory instead of the user's.
+if (process.env.WEB98_USER_DATA) {
+  app.setPath('userData', process.env.WEB98_USER_DATA);
+}
+
 // Log and survive unexpected errors instead of dying silently; individual
 // handlers are still expected to guard their own async work.
 process.on('uncaughtException', function (err) {
@@ -70,9 +76,10 @@ function boot() {
     if (wm) wm.eachMain(function (s) { s.emitRenderer(channel, payload); });
   }
 
-  wm = createWindowManager({
+  var wmDeps = {
     settings: settings,
     onKey: null, // set below (needs wm reference)
+    onWindowClosing: null, // set below (needs saveSession; saves session on window close)
     createTabs: function (win, state) {
       return createTabManager({
         win: win,
@@ -101,7 +108,6 @@ function boot() {
           onCommitted: function (tab) {
             if (/^https?:/i.test(tab.url)) {
               store.addHistory(tab.url, tab.title || '', Date.now());
-              store.pruneHistory(5000);
             }
           },
           onLastClosed: null
@@ -113,7 +119,8 @@ function boot() {
       console.log('[web98] ready in ' + ms + ' ms');
       state.emitRenderer('app:ready', { startupMs: ms });
     }
-  });
+  };
+  wm = createWindowManager(wmDeps);
 
   // Wire keyboard handling for chrome windows (needs wm + state).
   wm.createMainWindow = wrapCreateMainWindow(wm.createMainWindow);
@@ -127,8 +134,16 @@ function boot() {
 
   security = initSecurity({ settings: settings, session: ses });
 
-  settings.onChange(function (key, value) {
-    broadcast('settings:changed', settings.get());
+  // Settings changes can arrive in bursts (multi-key patches); coalesce so
+  // each tick of change work results in exactly one broadcast.
+  var settingsBroadcastScheduled = false;
+  settings.onChange(function () {
+    if (settingsBroadcastScheduled) return;
+    settingsBroadcastScheduled = true;
+    setImmediate(function () {
+      settingsBroadcastScheduled = false;
+      broadcast('settings:changed', settings.get());
+    });
   });
 
   registerIpc({
@@ -147,21 +162,24 @@ function boot() {
     : null;
   wm.createMainWindow(restore, true);
 
-  app.on('before-quit', function () {
+  function saveSession() {
     if (!settings.get('sessionRestore')) return;
     var primary = wm.primary();
-    if (!primary) return;
+    if (!primary || primary.win.isDestroyed()) return;
     var list = primary.tabs.list();
     var urls = [];
     var active = 0;
-    list.forEach(function (t, i) {
+    list.forEach(function (t) {
       if (t.url && t.url !== 'about:blank') {
         if (t.active) active = urls.length;
         urls.push(t.url);
       }
     });
     settings.set('lastSession', { urls: urls, active: active });
-  });
+  }
+
+  wmDeps.onWindowClosing = saveSession;
+  app.on('before-quit', saveSession);
 
   app.on('window-all-closed', function () {
     if (process.platform !== 'darwin') app.quit();

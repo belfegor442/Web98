@@ -181,4 +181,4 @@ function createDownloads(opts) {
   };
 }
 
-module.exports = { createDownloads: createDownloads };
+module.exports = { createDownloads: createDownloads, uniquePath: uniquePath };

@@ -64,17 +64,23 @@ Built with Electron (`WebContentsView` tabs), a custom retro chrome UI, and
 
 ```sh
 npm start            # run the browser (Electron)
-npm test             # 48 unit tests (runs inside Electron)
-npm run test:e2e     # 24 end-to-end checks (puppeteer-core + CDP)
+npm test             # 52 unit tests (runs inside Electron)
+npm run test:e2e     # 26 end-to-end checks (puppeteer-core + CDP)
+npm run test:restore # session-restore regression (2 app runs)
 npm run bench        # startup / tab-switch / memory benchmark
-npm run rebuild      # rebuild better-sqlite3 for the Electron ABI
-npm run dist         # Windows installer (NSIS) + portable exe -> dist/
-npm run dist:portable  # portable exe only
+npm run dist         # Windows x64: NSIS installer + portable exe -> dist/
+npm run dist:win-arm64  # Windows ARM64 installer + portable exe
+npm run dist:linux   # Linux x64 unpacked app dir
+npm run dist:linux-arm64 # Linux ARM64 unpacked app dir
 ```
 
-Environment notes: Node 24 + Electron 44; `better-sqlite3` must be rebuilt for
-the Electron ABI (see `npm run rebuild`). Some networks block arbitrary hosts —
-the e2e suite uses `wikipedia.org`.
+Environment notes: Node 24 + Electron 44. `better-sqlite3` v13 is N-API and
+loads its platform binary from `prebuilds/<platform>-<arch>.node`, so no
+rebuild toolchain is needed (`npmRebuild: false` in the build config);
+`npm run rebuild` remains available if you change ABI assumptions. Test and
+benchmark suites launch the app with `WEB98_USER_DATA` pointed at a throwaway
+profile, so they never read or write your real settings/history/session. Some
+networks block arbitrary hosts — the e2e suite uses `wikipedia.org`.
 
 ## Architecture
 
@@ -115,15 +121,29 @@ like a docked pane.
 
 ## Platform support
 
-| Platform        | Status                                      |
-| --------------- | ------------------------------------------- |
-| Windows 10/11   | Tested (primary target)                     |
-| macOS           | Untested — expected to work, unverified     |
-| Linux           | Untested — expected to work, unverified     |
+Built and verified on this machine (Windows 10/11, x64):
+
+| Target                 | Build            | Runtime verified      |
+| ---------------------- | ---------------- | --------------------- |
+| Windows x64 (NSIS + portable) | Yes, signed | Packaged exe boots, SQLite DB created |
+| Windows ARM64 (NSIS + portable) | Yes, signed | Not run (no ARM64 host here) |
+| Linux x64 (unpacked app dir) | Yes            | Not run (no Linux host here) |
+| Linux ARM64 (unpacked app dir) | Yes          | Not run (no Linux host here) |
+| macOS (DMG)            | Not built — requires a macOS host (notarization also needs macOS) | No |
+| Windows x86 / Linux ARMv7 | **Unavailable** — Electron 44 ships no `win32-ia32` or `linux-armv7l` builds | — |
+
+`.deb` and `.AppImage` installers additionally need host tooling this Windows
+machine does not have (`fpm` for deb; `mksquashfs` for AppImage — the bundled
+tool is a macOS/Linux binary). On a Linux host, install `fpm` and run
+`npx electron-builder --linux deb AppImage`; AppImage can also be built from
+macOS. Linux/macOS packages were produced from the same sources and contain
+the correct `better-sqlite3` prebuilds, but no Linux/macOS runtime testing has
+been performed here — treat those targets as packaged-but-untested.
 
 ## Known limitations
 
-- Session restore reopens the first window only.
+- Session restore reopens the first window only; it is saved both on quit
+  and when the last window is closed (closing the window used to drop it).
 - No extension support (by design for this scope).
 - Certificate "continue anyway" decisions apply to that tab + URL only and
   expire after 5 minutes (re-clicking renews them).
@@ -137,16 +157,32 @@ like a docked pane.
 
 ## Testing
 
-- `npm test` — pure logic (urlbar, safe URL policy, validation, store,
-  settings, menus/accelerators): **48/48 passing**.
+- `npm test` — pure logic (urlbar, safe URL policy, validation, store
+  limits/cascade deletes, settings, menus/accelerators, downloads):
+  **52/52 passing**.
 - `npm run test:e2e` — full browser flows against the live web (tabs,
   accelerators, menus, Wikipedia navigation, panels, dialogs, find, context
-  menu, `javascript:`/`file:` navigation refused, zero console errors):
-  **24/24 passing**. The suite brings the app
-  window to the foreground first — fully occluded windows drop dispatched
-  input, which would flake pointer checks on machines running fullscreen games.
-- `npm run bench` — startup ~150 ms to ready, tab switch median ~3 ms,
-  idle RSS ~100 MB.
-- `npm run dist` — builds `dist/Web98 Setup <version>.exe` (NSIS installer)
-  and `dist/Web98 <version>.exe` (portable); verified to boot, open the
-  start page, create its SQLite database and load real websites.
+  menu, `javascript:`/`file:` navigation refused, tab create/close releasing
+  its renderer page, zero console errors): **26/26 passing**. The suite brings
+  the app window to the foreground first — fully occluded windows drop
+  dispatched input, which would flake pointer checks on machines running
+  fullscreen games.
+- `npm run test:restore` — quits the app gracefully with 3 tabs open and
+  relaunches: session persisted, active tab index kept, background tabs
+  deferred-loaded without racing: **8/8 passing**.
+- `npm run bench` — measured on this machine, old code (commit `381ef77`)
+  vs. optimized code, same session, 3 runs each (medians): debugger up
+  154 → 181 ms, app ready 195 → 166 ms, chrome UI loaded 262 → 231 ms,
+  UI settled 1271 → 1237 ms, idle RSS 99.8 → 99.0 MB, idle CPU ~1% → ~1%,
+  load CPU ~42 → ~46%, tab switch median 5–6 → 5–6 ms, local nav 20–21 →
+  20–23 ms, process count idle/5-tabs/closed 5/9/5 → 5/9/5. Differences are
+  within run-to-run noise on this machine (Defender + editor contention);
+  the structural wins are event-storm reductions (coalesced IPC pushes,
+  no per-navigation DB prune, incremental tab-strip re-render, deferred
+  background loads) and the regression suites that now pin them down.
+  First cold run after touching all sources can spike (AV re-scan) — ignore
+  outliers, compare warm runs.
+- `npm run dist` / `dist:win-arm64` — build `dist/Web98 Setup <version>
+  <arch>.exe` (NSIS installer) and `dist/Web98 <version> <arch>.exe`
+  (portable), signed; x64 verified to boot, open the start page, and create
+  its SQLite database.

@@ -175,7 +175,9 @@ function registerIpc(deps) {
     if (!id) return;
     var tab = s.tabs.active();
     if (!tab || !tab.lastCtx) return;
-    runContextCommand(id, { params: tab.lastCtx.params }, s, deps);
+    var params = tab.lastCtx.params;
+    tab.lastCtx = null;
+    runContextCommand(id, { params: params }, s, deps);
   });
 
   /* ------------------------------ omni box ----------------------------- */
@@ -311,7 +313,6 @@ function registerIpc(deps) {
     Object.keys(result.patch).forEach(function (k) {
       settings.set(k, result.patch[k]);
     });
-    deps.broadcast('settings:changed', settings.get());
     var out = settings.get();
     if (result.rejected.length) out.rejected = result.rejected;
     return out;

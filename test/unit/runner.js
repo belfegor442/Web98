@@ -206,6 +206,20 @@ function runStore() {
     eq(store.history({ limit: 5 })[0].title, 'P29');
   });
 
+  test('store: history auto-prunes at limit', function () {
+    var d = fs.mkdtempSync(path.join(os.tmpdir(), 'web98-hist-'));
+    var s = openStore(path.join(d, 'h.db'), { historyLimit: 100 });
+    for (var i = 0; i < 150; i++) s.addHistory('https://h' + i + '.example/', 'H' + i, 9000 + i);
+    eq(s.countHistory(), 100, 'pruned to limit');
+    var rows = s.history({ limit: 100 });
+    eq(rows[0].title, 'H149', 'newest kept');
+    eq(rows.filter(function (r) { return r.title === 'H0'; }).length, 0, 'oldest dropped');
+    s.clearHistory();
+    eq(s.countHistory(), 0, 'clear resets');
+    s.close();
+    try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* noop */ }
+  });
+
   test('store: history clear', function () {
     store.clearHistory();
     eq(store.countHistory(), 0);
@@ -238,6 +252,23 @@ function runStore() {
     var b = store.listBookmarks().find(function (x) { return x.url === 'https://2.example/'; });
     store.deleteBookmark(b.id);
     eq(store.listBookmarks().filter(function (x) { return x.url === 'https://2.example/'; }).length, 0);
+  });
+
+  test('store: deleting a folder removes children recursively', function () {
+    var d = fs.mkdtempSync(path.join(os.tmpdir(), 'web98-book-'));
+    var s = openStore(path.join(d, 'b.db'));
+    var root = s.addBookmark({ name: 'Root', url: '', parent: 0 });
+    var child = s.addBookmark({ name: 'Child', url: '', parent: root.id });
+    s.addBookmark({ name: 'Grand', url: 'https://g.example/', parent: child.id });
+    s.addBookmark({ name: 'Other', url: 'https://o.example/', parent: 0 });
+    s.deleteBookmark(root.id);
+    var names = s.listBookmarks().map(function (b) { return b.name; });
+    eq(names.indexOf('Root'), -1, 'root gone');
+    eq(names.indexOf('Child'), -1, 'child gone');
+    eq(names.indexOf('Grand'), -1, 'grandchild gone');
+    ok(names.indexOf('Other') !== -1, 'unrelated kept');
+    s.close();
+    try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* noop */ }
   });
 
   test('store: persistence across reopen', function () {
@@ -524,6 +555,18 @@ function runValidate() {
     ok(/\.[a-z]+$/.test(validate.sanitizeFilename(long)), 'extension kept');
   });
 
+  test('validate: sanitizeFilename Windows devices and trailing dots/spaces', function () {
+    eq(validate.sanitizeFilename('CON'), '_CON', 'bare device name');
+    eq(validate.sanitizeFilename('con.txt'), '_con.txt', 'device name with extension');
+    eq(validate.sanitizeFilename('LPT1.log'), '_LPT1.log', 'printer port');
+    eq(validate.sanitizeFilename('COM1'), '_COM1', 'com port');
+    eq(validate.sanitizeFilename('nul'), '_nul', 'nul');
+    eq(validate.sanitizeFilename('report.'), 'report', 'trailing dot dropped');
+    eq(validate.sanitizeFilename('report . '), 'report', 'trailing space+dot dropped');
+    eq(validate.sanitizeFilename('my file.txt'), 'my file.txt', 'inner space kept');
+    eq(validate.sanitizeFilename('computer.doc'), 'computer.doc', 'normal name untouched');
+  });
+
   test('validate: sanitizeBookmark accepts safe entries, rejects javascript:', function () {
     var b = validate.sanitizeBookmark({ name: 'Site', url: 'https://x.example/', parent: 3 });
     eq(b, { name: 'Site', url: 'https://x.example/', parent: 3 }, 'valid bookmark');
@@ -588,6 +631,26 @@ function runValidate() {
   });
 }
 
+/* -------------------------------- downloads -------------------------------- */
+var { uniquePath } = require('../../src/main/downloads');
+
+function runDownloads() {
+  test('downloads: uniquePath avoids collisions', function () {
+    var d = fs.mkdtempSync(path.join(os.tmpdir(), 'web98-dl-'));
+    var p1 = uniquePath(d, 'file.txt');
+    eq(p1, path.join(d, 'file.txt'), 'first use is plain name');
+    fs.writeFileSync(p1, 'x');
+    var p2 = uniquePath(d, 'file.txt');
+    eq(p2, path.join(d, 'file (2).txt'), 'second gets (2)');
+    fs.writeFileSync(p2, 'x');
+    eq(uniquePath(d, 'file.txt'), path.join(d, 'file (3).txt'), 'third gets (3)');
+    var noExt = uniquePath(d, 'README');
+    fs.writeFileSync(noExt, 'x');
+    eq(uniquePath(d, 'README'), path.join(d, 'README (2)'), 'extensionless collides too');
+    try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* noop */ }
+  });
+}
+
 /* --------------------------------- main ----------------------------------- */
 function runAll() {
   console.log('Web98 unit tests');
@@ -597,6 +660,7 @@ function runAll() {
   runMenus();
   runSafeUrl();
   runValidate();
+  runDownloads();
 
   console.log('');
   console.log(passed + ' passed, ' + failed + ' failed');

@@ -4,13 +4,59 @@
  */
 
 const path = require('path');
-const { spawn } = require('child_process');
+const os = require('os');
+const { spawn, execSync } = require('child_process');
 const puppeteer = require('puppeteer-core');
 
 const ELECTRON = path.join(__dirname, '..', '..', 'node_modules', 'electron', 'dist', 'electron.exe');
 const ROOT = path.join(__dirname, '..', '..');
 const PORT = 9355;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/* Persistent isolated profile: never touches the user's real data, and
+   stays warm across runs so startup numbers are comparable. */
+const BENCH_PROFILE = path.join(os.tmpdir(), 'web98-bench-profile');
+const BENCH_ENV = Object.assign({}, process.env, { WEB98_USER_DATA: BENCH_PROFILE });
+
+function killStrayElectrons() {
+  try {
+    execSync('taskkill /F /IM electron.exe /T', { stdio: 'ignore' });
+  } catch (e) { /* no stray processes */ }
+}
+
+function cpuReadMs() {
+  const ps =
+    '(Get-Process electron -ErrorAction SilentlyContinue | ForEach-Object { $_.TotalProcessorTime.TotalMilliseconds } | Measure-Object -Sum).Sum';
+  try {
+    return parseFloat(execSync(`powershell -NoProfile -Command "${ps}"`).toString()) || 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function cpuPercentBetween(c1, w1, c2, w2) {
+  const wall = (w2 - w1) / 1000;
+  if (wall <= 0) return 0;
+  return Math.max(0, Math.round(((c2 - c1) / 1000 / wall) * 1000) / 10);
+}
+
+// Whole-app CPU as % of one core (can exceed 100 across cores):
+// delta of TotalProcessorTime summed over all electron processes / wall time.
+async function electronCpuPercent(durationMs) {
+  const c1 = cpuReadMs();
+  const w1 = Date.now();
+  await sleep(durationMs);
+  const c2 = cpuReadMs();
+  const w2 = Date.now();
+  return cpuPercentBetween(c1, w1, c2, w2);
+}
+
+function electronProcessCount() {
+  try {
+    return parseInt(execSync('powershell -NoProfile -Command "(Get-Process electron -ErrorAction SilentlyContinue | Measure-Object).Count"').toString(), 10) || 0;
+  } catch (e) {
+    return -1;
+  }
+}
 
 async function waitForDebugger(timeoutMs) {
   const deadline = Date.now() + timeoutMs;
@@ -45,16 +91,21 @@ function median(nums) {
 
 async function main() {
   const results = {};
+  killStrayElectrons();
+  await sleep(1200); // let the OS settle after killing strays before spawning
 
   /* --- 1. cold startup (wall time spawn -> debugger + ready log) --- */
   let t0 = Date.now();
   const proc = spawn(ELECTRON, ['.', `--remote-debugging-port=${PORT}`], {
     cwd: ROOT,
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: BENCH_ENV
   });
   let readyMs = null;
+  let stdoutBuf = '';
   proc.stdout.on('data', (d) => {
-    const m = /ready in (\d+) ms/.exec(String(d));
+    stdoutBuf += String(d);
+    const m = /ready in (\d+) ms/.exec(stdoutBuf);
     if (m && readyMs === null) readyMs = parseInt(m[1], 10);
   });
   await waitForDebugger(30000);
@@ -69,20 +120,43 @@ async function main() {
     if (!chrome) await sleep(100);
   }
   if (!chrome) throw new Error('chrome page not found');
+  results.chromeLoadMs = Date.now() - t0; // chrome UI document loaded
   await sleep(1000);
   results.appReadyMs = readyMs; // main-process reported
-  results.uiInteractiveMs = Date.now() - t0;
+  results.uiSettledMs = Date.now() - t0; // chrome loaded + 1000 ms settle
 
-  /* --- 2. idle memory after settle --- */
+  /* --- 2. idle memory + idle CPU after settle --- */
   await sleep(1500);
   const stats = await chrome.evaluate(() => window.web98.invoke('app:stats'));
   results.idleRssMB = stats.rssMB;
   results.idleHeapMB = stats.heapMB;
+  results.idleCpuPercent = await electronCpuPercent(1500);
+  results.procsIdle = electronProcessCount();
 
-  /* --- 3. tab switch latency (5 tabs, 20 switches) --- */
+  /* --- 3. tab switch latency (5 tabs with real pages, 20 switches) --- */
+  const target = 'file:///' + path.join(ROOT, 'src', 'renderer', 'startpage.html').replace(/\\/g, '/');
+  const loadC1 = cpuReadMs();
+  const loadW1 = Date.now();
   for (let i = 0; i < 4; i++) {
-    await pressCtrl(chrome, 'KeyT', 84);
-    await sleep(350);
+    const before = await chrome.evaluate(() => document.querySelectorAll('.ow-tab').length);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await pressCtrl(chrome, 'KeyT', 84);
+      try {
+        await chrome.waitForFunction((n) => document.querySelectorAll('.ow-tab').length === n + 1, { timeout: 2000 }, before);
+        break;
+      } catch (e) { /* key may be dropped while occluded — retry */ }
+    }
+    await chrome.waitForFunction((n) => document.querySelectorAll('.ow-tab').length === n + 1, { timeout: 3000 }, before);
+    await sleep(150);
+    await chrome.evaluate((u, n) => {
+      const input = document.getElementById('address');
+      input.value = u + '#' + n;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    }, target, i);
+    await chrome.waitForFunction(() => {
+      const el = document.getElementById('status');
+      return el && el.textContent === 'Done';
+    }, { timeout: 5000 });
   }
   const switchTimes = [];
   for (let i = 0; i < 20; i++) {
@@ -99,10 +173,10 @@ async function main() {
   }
   results.tabSwitchMedianMs = median(switchTimes);
   results.tabSwitchMaxMs = Math.max(...switchTimes);
+  results.loadCpuPercent = cpuPercentBetween(loadC1, loadW1, cpuReadMs(), Date.now());
 
   /* --- 4. navigation latency (address bar -> committed, local page x5) --- */
   const navTimes = [];
-  const target = 'file:///' + path.join(ROOT, 'src', 'renderer', 'startpage.html').replace(/\\/g, '/');
   for (let i = 0; i < 5; i++) {
     const s = Date.now();
     await chrome.evaluate((u) => {
@@ -119,22 +193,48 @@ async function main() {
   }
   results.localNavMedianMs = median(navTimes);
 
-  /* --- 5. memory after activity --- */
+  /* --- 5. memory after activity, then release check --- */
   const stats2 = await chrome.evaluate(() => window.web98.invoke('app:stats'));
   results.activeRssMB = stats2.rssMB;
+  results.procs5Tabs = electronProcessCount();
+
+  /* --- 6. close the 4 extra tabs, verify count + resource release --- */
+  for (let i = 0; i < 4; i++) {
+    await chrome.evaluate(() => {
+      const btn = document.querySelector('.ow-tab__close');
+      if (btn) btn.click();
+    });
+    await sleep(250);
+  }
+  await chrome.waitForFunction(() => document.querySelectorAll('.ow-tab').length === 1, { timeout: 5000 });
+  results.tabsAfterClose = await chrome.evaluate(() => document.querySelectorAll('.ow-tab').length);
+  await sleep(2000);
+  const stats3 = await chrome.evaluate(() => window.web98.invoke('app:stats'));
+  results.closedRssMB = stats3.rssMB;
+  results.tabCloseReleaseMB = Math.round((results.activeRssMB - results.closedRssMB) * 10) / 10;
+  results.procsAfterClose = electronProcessCount();
 
   console.log('Web98 benchmark');
   console.log('  startup (debugger up):   ' + results.debuggerUpMs + ' ms');
   console.log('  startup (app "ready"):   ' + results.appReadyMs + ' ms');
-  console.log('  startup (UI attached):   ' + results.uiInteractiveMs + ' ms');
+  console.log('  startup (chrome loaded): ' + results.chromeLoadMs + ' ms');
+  console.log('  startup (UI settled):    ' + results.uiSettledMs + ' ms');
   console.log('  idle RSS:                ' + results.idleRssMB + ' MB (heap ' + results.idleHeapMB + ' MB)');
+  console.log('  idle CPU (1 core = 100):  ' + results.idleCpuPercent + ' %');
+  console.log('  load CPU (1 core = 100):  ' + results.loadCpuPercent + ' %');
+  console.log('  electron processes:      idle ' + results.procsIdle + ' / 5 tabs ' + results.procs5Tabs + ' / closed ' + results.procsAfterClose);
   console.log('  tab switch median/max:   ' + results.tabSwitchMedianMs + ' / ' + results.tabSwitchMaxMs + ' ms  (n=20)');
   console.log('  local nav median:        ' + results.localNavMedianMs + ' ms  (n=5)');
   console.log('  RSS after 5 tabs:        ' + results.activeRssMB + ' MB');
+  console.log('  RSS after closing:       ' + results.closedRssMB + ' MB (' + results.tabCloseReleaseMB + ' MB released, tabs=' + results.tabsAfterClose + ')');
 
   try { await browser.disconnect(); } catch (e) { /* ignore */ }
-  proc.kill();
-  await sleep(400);
+  try {
+    execSync(`taskkill /F /PID ${proc.pid} /T`, { stdio: 'ignore' });
+  } catch (e) {
+    proc.kill();
+  }
+  await sleep(600);
   process.exit(0);
 }
 
