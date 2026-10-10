@@ -48,7 +48,8 @@ function registerIpc(deps) {
       var parsed = parseAddress(query, { searchTemplate: settings.searchTemplate() });
       if (parsed.type !== 'url' && parsed.type !== 'search') return { ok: false };
       if (!safeurl.isLoadableUrl(parsed.url)) return { ok: false };
-      var tab = deps.wm.findTabByWc(e.sender);
+      var found = deps.wm.findTabByWc(e.sender);
+      var tab = found && found.tab;
       if (!tab || !tab.wc || tab.wc.isDestroyed()) return { ok: false };
       tab.wc.loadURL(parsed.url);
       return { ok: true };
