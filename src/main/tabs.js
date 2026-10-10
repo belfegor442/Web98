@@ -121,12 +121,46 @@ function createTabManager(opts) {
 
   function applyBounds() {
     tabs.forEach(function (t) {
-      t.view.setBounds(bounds);
+      if (t.view) t.view.setBounds(bounds);
     });
+  }
+
+  /**
+   * Materialize the WebContentsView on demand. Queued background tabs stay
+   * view-less (no renderer process) until they are activated or their load
+   * turn arrives, which keeps session-restore peaks and startup cost down.
+   */
+  function ensureView(tab) {
+    if (tab.view) return tab;
+    tab.view = new WebContentsView({
+      webPreferences: {
+        preload: PRELOAD,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webviewTag: false,
+        spellcheck: false,
+        partition: 'persist:web98',
+        backgroundThrottling: true
+      }
+    });
+    tab.wc = tab.view.webContents;
+    tab.view.setBounds(bounds);
+    tab.view.setVisible(false);
+    win.contentView.addChildView(tab.view);
+    wire(tab);
+    try {
+      tab.wc.setZoomFactor(tab.zoom);
+    } catch (e) { /* noop */ }
+    return tab;
   }
 
   function wire(tab) {
     var wc = tab.wc;
+    // Background tabs must run timers/animation frames throttled even while
+    // the window itself stays visible (view-level hiding alone does not
+    // engage Chromium's background throttling for WebContentsView tabs).
+    wc.setBackgroundThrottling(true);
 
     wc.setWindowOpenHandler(function (details) {
       var u = details.url || '';
@@ -299,26 +333,8 @@ function createTabManager(opts) {
       zoom: opts.getZoom ? opts.getZoom() : 1,
       error: null
     };
-    tab.view = new WebContentsView({
-      webPreferences: {
-        preload: PRELOAD,
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        webviewTag: false,
-        spellcheck: false,
-        partition: 'persist:web98'
-      }
-    });
-    tab.wc = tab.view.webContents;
-    tab.view.setBounds(bounds);
-    tab.view.setVisible(false);
-    win.contentView.addChildView(tab.view);
-    wire(tab);
     tabs.push(tab);
-    try {
-      tab.wc.setZoomFactor(tab.zoom);
-    } catch (e) { /* noop */ }
+    if (url) ensureView(tab);
     if (activate) setActive(tab.id);
     emitTabs();
     if (url) load(tab, url);
@@ -371,6 +387,7 @@ function createTabManager(opts) {
     var job = pendingLoads.shift();
     var tab = get(job.tabId);
     if (!tab) return scheduleFlush(100);
+    ensureView(tab);
     tab.pendingUrl = null;
     var finished = false;
     function done() {
@@ -400,6 +417,7 @@ function createTabManager(opts) {
   function setActive(id) {
     var tab = get(id);
     if (!tab) return;
+    ensureView(tab);
     if (tab.pendingUrl) {
       // User is switching to a queued background tab: load it now.
       var queued = tab.pendingUrl;
@@ -417,7 +435,7 @@ function createTabManager(opts) {
     win.contentView.removeChildView(tab.view);
     win.contentView.addChildView(tab.view);
     tabs.forEach(function (t) {
-      t.view.setVisible(t.id === activeId && !hiddenForPopup);
+      if (t.view) t.view.setVisible(t.id === activeId && !hiddenForPopup);
     });
     tab.wc.focus();
     emitTabs();
@@ -431,10 +449,10 @@ function createTabManager(opts) {
     tabs.splice(idx, 1);
     if (!destroyed) {
       try {
-        tab.view.removeFromParentView();
+        if (tab.view) tab.view.removeFromParentView();
       } catch (e) { /* noop */ }
       try {
-        tab.wc.destroy();
+        if (tab.wc) tab.wc.destroy();
       } catch (e) { /* noop */ }
     }
     if (activeId === id) {
@@ -449,7 +467,7 @@ function createTabManager(opts) {
   function setPopupHidden(hidden) {
     hiddenForPopup = hidden;
     tabs.forEach(function (t) {
-      t.view.setVisible(t.id === activeId && !hidden);
+      if (t.view) t.view.setVisible(t.id === activeId && !hidden);
     });
     if (!hidden) {
       var t = active();

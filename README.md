@@ -64,10 +64,11 @@ Built with Electron (`WebContentsView` tabs), a custom retro chrome UI, and
 
 ```sh
 npm start            # run the browser (Electron)
-npm test             # 52 unit tests (runs inside Electron)
+npm test             # 54 unit tests (runs inside Electron)
 npm run test:e2e     # 26 end-to-end checks (puppeteer-core + CDP)
 npm run test:restore # session-restore regression (2 app runs)
 npm run bench        # startup / tab-switch / memory benchmark
+npm run bench:memory # per-process memory/CPU + background-throttle benchmark
 npm run dist         # Windows x64: NSIS installer + portable exe -> dist/
 npm run dist:win-arm64  # Windows ARM64 installer + portable exe
 npm run dist:linux   # Linux x64 unpacked app dir
@@ -158,8 +159,8 @@ been performed here — treat those targets as packaged-but-untested.
 ## Testing
 
 - `npm test` — pure logic (urlbar, safe URL policy, validation, store
-  limits/cascade deletes, settings, menus/accelerators, downloads):
-  **52/52 passing**.
+  limits/cascade deletes, settings, menus/accelerators, downloads incl.
+  finished-history cap and coalesced progress emits): **54/54 passing**.
 - `npm run test:e2e` — full browser flows against the live web (tabs,
   accelerators, menus, Wikipedia navigation, panels, dialogs, find, context
   menu, `javascript:`/`file:` navigation refused, tab create/close releasing
@@ -181,7 +182,27 @@ been performed here — treat those targets as packaged-but-untested.
   no per-navigation DB prune, incremental tab-strip re-render, deferred
   background loads) and the regression suites that now pin them down.
   First cold run after touching all sources can spike (AV re-scan) — ignore
-  outliers, compare warm runs.
+  outliers, compare warm runs. A later round (lazy background-tab views,
+  explicit background timer throttling, coalesced download progress) measured
+  medians of 3: debugger up 148 ms, app ready 138 ms, chrome loaded 191 ms,
+  UI settled 1204 ms, idle RSS ~101 MB, idle CPU 0–1%, load CPU ~47%,
+  tab switch median 12 ms (max 15), local nav 23 ms, procs 5/9/5.
+- `npm run bench:memory` — per-process memory/CPU breakdown (role-labelled
+  via Win32 process query), scenarios: idle, five simple pages, hidden-tab
+  timer throttling, tab-churn leak check, final idle; hard checks + JSON
+  output in `test/bench/memory-results.json` (gitignored). Machine: Ryzen 5
+  7600X ×12, 31 GB RAM, Windows 10/11 build 26200, warm persistent profile,
+  3 s settle, median of 3 runs after the optimization round: idle 5 procs
+  **403 MB WS / 209 MB private, CPU 0–1.5%**; five pages 10 procs **845 MB
+  WS / 349 MB private, CPU ~0.3%** (all 5 loaded); churn returns to 5 procs
+  with flat working set across 3 rounds (~419–423 MB); hidden-tab ticker
+  clamped to ~1.5 ticks/s (6 per 4 s) with hidden CPU 0–0.6%. The
+  pre-optimization baseline (same bench, before lazy views / throttling
+  changes) measured idle 421 MB WS / 233 MB private, five pages 871 / 357
+  MB, and **failed** the throttle check — hidden timer kept running at
+  ~17 ticks/s (67 per 4 s, no throttling at all while the window stayed
+  visible). Methodology: kill stray processes first, fresh spawn per run,
+  medians because GPU/Defender contention makes single runs noisy.
 - `npm run dist` / `dist:win-arm64` — build `dist/Web98 Setup <version>
   <arch>.exe` (NSIS installer) and `dist/Web98 <version> <arch>.exe`
   (portable), signed; x64 verified to boot, open the start page, and create

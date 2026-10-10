@@ -188,7 +188,9 @@ function registerIpc(deps) {
     var seen = {};
     store.listBookmarks().forEach(function (b) {
       if (!b.url) return;
-      if (b.name.toLowerCase().indexOf(q.toLowerCase()) !== -1 || b.url.toLowerCase().indexOf(q.toLowerCase()) !== -1) {
+      var name = (b.name || '').toLowerCase();
+      var url = b.url.toLowerCase();
+      if (name.indexOf(q) !== -1 || url.indexOf(q) !== -1) {
         if (!seen[b.url]) {
           seen[b.url] = 1;
           out.push({ type: 'bookmark', title: b.name, url: b.url });

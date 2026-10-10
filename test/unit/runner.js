@@ -632,7 +632,7 @@ function runValidate() {
 }
 
 /* -------------------------------- downloads -------------------------------- */
-var { uniquePath } = require('../../src/main/downloads');
+var { uniquePath, createDownloads } = require('../../src/main/downloads');
 
 function runDownloads() {
   test('downloads: uniquePath avoids collisions', function () {
@@ -648,6 +648,72 @@ function runDownloads() {
     fs.writeFileSync(noExt, 'x');
     eq(uniquePath(d, 'README'), path.join(d, 'README (2)'), 'extensionless collides too');
     try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* noop */ }
+  });
+
+  test('downloads: finished history capped, active kept', function () {
+    var handler = null;
+    var session = { on: function (ev, fn) { if (ev === 'will-download') handler = fn; } };
+    var dl = createDownloads({
+      session: session,
+      emit: function () {},
+      downloadsDir: function () { return os.tmpdir(); }
+    });
+    function makeItem(n) {
+      var doneFns = [];
+      return {
+        getFilename: function () { return 'f' + n + '.txt'; },
+        setSavePath: function () {},
+        getURL: function () { return 'https://example.com/f' + n; },
+        getTotalBytes: function () { return 10; },
+        getReceivedBytes: function () { return 10; },
+        isPaused: function () { return false; },
+        canPause: function () { return false; },
+        canResume: function () { return false; },
+        on: function () {},
+        once: function (ev, fn) { if (ev === 'done') doneFns.push(fn); },
+        emitDone: function (state) { doneFns.forEach(function (fn) { fn({}, state); }); }
+      };
+    }
+    ok(handler, 'will-download registered');
+    handler({}, makeItem('active'));
+    for (var i = 0; i < 250; i++) {
+      var it = makeItem(i);
+      handler({}, it);
+      it.emitDone('completed');
+    }
+    var list = dl.list();
+    var finished = list.filter(function (d) { return d.state !== 'progressing' && d.state !== 'paused'; });
+    var active = list.filter(function (d) { return d.state === 'progressing'; });
+    eq(finished.length, 200, 'finished entries capped at 200');
+    eq(active.length, 1, 'incomplete download survives the cap');
+  });
+
+  test('downloads: progress bursts are deferred, not emitted inline', function () {
+    var handler = null;
+    var session = { on: function (ev, fn) { if (ev === 'will-download') handler = fn; } };
+    var emits = 0;
+    createDownloads({
+      session: session,
+      emit: function () { emits++; },
+      downloadsDir: function () { return os.tmpdir(); }
+    });
+    var handlers = {};
+    var item = {
+      getFilename: function () { return 'burst.txt'; },
+      setSavePath: function () {},
+      getURL: function () { return 'https://example.com/burst'; },
+      getTotalBytes: function () { return 100; },
+      getReceivedBytes: function () { return 50; },
+      isPaused: function () { return false; },
+      canPause: function () { return false; },
+      canResume: function () { return false; },
+      on: function (ev, fn) { handlers[ev] = fn; },
+      once: function (ev, fn) { handlers[ev] = fn; }
+    };
+    ok(handler, 'will-download registered');
+    handler({}, item);
+    for (var i = 0; i < 10; i++) handlers.updated({}, 'progressing');
+    eq(emits, 0, 'no emit during the synchronous burst (coalesced off the event path)');
   });
 }
 

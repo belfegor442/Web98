@@ -12,10 +12,11 @@
     "test:restore": "node test/e2e/restore.js",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "bench": "node test/bench/startup.js",
+    "bench:memory": "node test/bench/memory.js",
     "dist": "electron-builder --win nsis portable",
     "dist:win-arm64": "electron-builder --win nsis portable --arm64",
-    "dist:linux": "electron-builder --linux deb",
-    "dist:linux-arm64": "electron-builder --linux deb --arm64",
+    "dist:linux": "electron-builder --linux dir",
+    "dist:linux-arm64": "electron-builder --linux dir --arm64",
     "dist:mac": "electron-builder --mac dmg"
   },
   "dependencies": {

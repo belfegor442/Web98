@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Ticker</title>
+</head>
+<body>
+  <h1>Background ticker</h1>
+  <p>Ticks: <span id="n">0</span></p>
+  <script>
+    'use strict';
+    window.__ticks = 0;
+    setInterval(function () {
+      window.__ticks++;
+      document.getElementById('n').textContent = String(window.__ticks);
+    }, 50);
+  </script>
+</body>
+</html>

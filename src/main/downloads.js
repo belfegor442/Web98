@@ -29,6 +29,8 @@ function createDownloads(opts) {
   // opts: { session, emit, downloadsDir }
   var items = [];
   var nextId = 1;
+  var MAX_FINISHED = 200;
+  var pushScheduled = false;
 
   function snapshot() {
     return items.map(function (d) {
@@ -46,8 +48,27 @@ function createDownloads(opts) {
     });
   }
 
+  // Progress updates arrive in bursts; coalesce so a busy download cannot
+  // flood the renderer with one full-list IPC per network event.
   function push() {
-    opts.emit('downloads', snapshot());
+    if (pushScheduled) return;
+    pushScheduled = true;
+    setImmediate(function () {
+      pushScheduled = false;
+      opts.emit('downloads', snapshot());
+    });
+  }
+
+  // Finished entries are kept for the session only up to a fixed budget so
+  // a long-lived session cannot grow this list without bound.
+  function trimFinished() {
+    var finishedIdx = [];
+    items.forEach(function (d, i) {
+      if (d.state !== 'progressing' && d.state !== 'paused') finishedIdx.push(i);
+    });
+    if (finishedIdx.length <= MAX_FINISHED) return;
+    var drop = new Set(finishedIdx.slice(0, finishedIdx.length - MAX_FINISHED));
+    items = items.filter(function (d, i) { return !drop.has(i); });
   }
 
   opts.session.on('will-download', function (event, item) {
@@ -95,6 +116,7 @@ function createDownloads(opts) {
       d.received = item.getReceivedBytes();
       d.endTime = Date.now();
       d.item = null;
+      trimFinished();
       push();
       if (state === 'completed' && opts.onCompleted) opts.onCompleted(d);
     });
