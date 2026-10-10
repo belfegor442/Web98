@@ -2,9 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Web98 Home</title>
 <style>
-  html, body { margin: 0; padding: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100%; }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px dotted #000080; outline-offset: 2px; }
   body {
     font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
     font-size: 11px;
@@ -13,7 +16,8 @@
     min-height: 100vh;
   }
   .page {
-    max-width: 760px;
+    width: 100%;
+    max-width: 820px;
     margin: 0 auto;
     padding: 28px 16px 40px 16px;
   }
@@ -34,7 +38,7 @@
     padding-bottom: 12px;
     margin-bottom: 14px;
   }
-  .masthead img { width: 48px; height: 48px; }
+  .brand-mark { width: 48px; height: 48px; flex: 0 0 48px; display: grid; place-items: center; background: #000080; color: #fff; font-size: 19px; font-weight: bold; border: 2px outset #dfdfdf; }
   .masthead h1 {
     font-size: 22px;
     margin: 0;
@@ -110,6 +114,16 @@
     padding: 8px 10px;
     line-height: 1.5;
   }
+  @media (max-width: 560px) {
+    .page { padding: 12px 8px 24px; }
+    .panel { padding: 10px; }
+    .masthead { align-items: flex-start; gap: 8px; }
+    .masthead h1 { font-size: 20px; }
+    .search { flex-wrap: wrap; }
+    .search input { flex-basis: 100%; min-width: 0; }
+    .w98-btn { flex: 1 1 auto; }
+    .col { min-width: min(100%, 220px); }
+  }
   .footer {
     margin-top: 12px;
     text-align: center;
@@ -123,17 +137,17 @@
 <div class="page">
   <div class="panel">
     <div class="masthead">
-      <img src="../../assets/ie5/assets/ie-logo.png" alt="" />
+      <div class="brand-mark" aria-hidden="true">W98</div>
       <div>
         <h1><span>Web</span>98</h1>
         <p>The Web the way it was meant to be &mdash; on your desktop.</p>
       </div>
     </div>
 
-    <form class="search" action="https://www.google.com/search" method="get" id="searchform">
-      <input type="text" name="q" id="q" placeholder="Search the Web..." autocomplete="off" />
+    <form class="search" id="searchform" role="search">
+      <input type="search" name="q" id="q" placeholder="Search the Web or enter an address..." autocomplete="off" aria-label="Search the web or enter an address" />
       <button class="w98-btn" type="submit">Search</button>
-      <button class="w98-btn" type="button" id="lucky">I'm Feeling Lucky</button>
+      <button class="w98-btn" type="button" id="lucky">Open directly</button>
     </form>
 
     <div class="columns">
@@ -158,10 +172,10 @@
       <div class="col">
         <h2>Browser</h2>
         <ul>
-          <li><a href="#" data-menu="favorites">Favorites</a><small>open the Favorites bar (Alt+O then 3)</small></li>
-          <li><a href="#" data-menu="history">History</a><small>Tools &rarr; History... (Ctrl+H)</small></li>
-          <li><a href="#" data-menu="settings">Internet Options</a><small>Tools &rarr; Internet Options...</small></li>
-          <li><a href="#" data-menu="about">About Web98</a><small>Help &rarr; About Web98</small></li>
+          <li><a href="#" data-action="favorites">Favorites</a><small>Open and manage saved pages</small></li>
+          <li><a href="#" data-action="history">History</a><small>Search and reopen visited pages (Ctrl+H)</small></li>
+          <li><a href="#" data-action="settings">Web98 Settings</a><small>Homepage, search provider, privacy and downloads</small></li>
+          <li><a href="#" data-action="about">About Web98</a><small>Help &rarr; About Web98</small></li>
         </ul>
       </div>
     </div>
@@ -173,27 +187,36 @@
     </div>
   </div>
 
-  <div class="footer">Web98 Home Page &mdash; rendered by a real browser engine, styled like 1998.</div>
+  <div class="footer">Web98 &mdash; a real browser engine with a classic desktop interface.</div>
 </div>
 
 <script>
 (function () {
+  'use strict';
   var form = document.getElementById('searchform');
   var input = document.getElementById('q');
-  form.addEventListener('submit', function () {
-    if (!input.value.trim()) event.preventDefault();
-  });
-  document.getElementById('lucky').addEventListener('click', function () {
-    if (!input.value.trim()) return;
-    location.href = 'https://www.google.com/search?btnI=1&q=' + encodeURIComponent(input.value);
-  });
-  document.querySelectorAll('[data-menu]').forEach(function (a) {
-    a.addEventListener('click', function (e) {
-      e.preventDefault();
-      alert('Use the menu bar: ' + (a.textContent || '').trim());
+  var api = window.web98home;
+  function search() {
+    var query = input.value.trim();
+    if (!query) { input.focus(); return; }
+    if (api && typeof api.action === 'function') {
+      api.action('search', query).catch(function () {
+        input.setCustomValidity('Web98 could not open this search. Use the address bar.');
+        input.reportValidity();
+        input.setCustomValidity('');
+      });
+    }
+  }
+  form.addEventListener('submit', function (event) { event.preventDefault(); search(); });
+  document.getElementById('lucky').addEventListener('click', search);
+  document.querySelectorAll('[data-action]').forEach(function (link) {
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      if (api && typeof api.action === 'function') api.action(link.getAttribute('data-action')).catch(function () {});
     });
   });
-  input.focus();
+  input.addEventListener('keydown', function (event) { if (event.key === 'Escape') input.value = ''; });
+  input.focus({ preventScroll: true });
 })();
 </script>
 </body>
