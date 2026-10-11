@@ -9,11 +9,13 @@ namespace web98 {
 
 class MainWindow;
 class TabManager;
+struct Tab;
 
 // Everything a command needs to act (Electron's runCommand ctx).
 struct CommandCtx {
   MainWindow* win = nullptr;
   TabManager* tabs = nullptr;
+  Tab* tab = nullptr;  // target tab for context commands (may differ from active)
 };
 
 // menus.js contextTemplate(params, tab): array of {id,label,enabled} / {sep}.

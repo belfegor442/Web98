@@ -225,15 +225,25 @@ void AppCore::shutdown() {
 void AppCore::quit() {
   quitting_ = true;
   saveSession();
-  for (auto& w : mainWindows_) {
-    if (w) w->requestClose();
-  }
+  // Copy raw pointers first: requestClose() runs synchronously and retires
+  // windows from mainWindows_, invalidating range iterators.
+  std::vector<MainWindow*> toClose;
+  for (auto& w : mainWindows_)
+    if (w) toClose.push_back(w.get());
+  for (MainWindow* w : toClose) w->requestClose();
+  // Close any open dialogs so they don't keep the process alive.
+  std::vector<DialogWindow*> dialogs;
+  for (auto& d : dialogs_)
+    if (d) dialogs.push_back(d.get());
+  for (DialogWindow* d : dialogs) d->requestClose();
   if (mainWindows_.empty()) ::PostQuitMessage(0);
 }
 
 void AppCore::closeAllMainWindows() {
+  std::vector<MainWindow*> toClose;
   for (auto& w : mainWindows_)
-    if (w) w->requestClose();
+    if (w) toClose.push_back(w.get());
+  for (MainWindow* w : toClose) w->requestClose();
 }
 
 /* ------------------------------- services ---------------------------------- */
@@ -658,6 +668,7 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
     CommandCtx c;
     c.win = ctx.window ? ctx.window : t->window();
     c.tabs = t;
+    c.tab = tab;
     runContextCommand(cid, p, c);
     return;
   }

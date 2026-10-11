@@ -169,7 +169,7 @@ Tab* TabManager::create(const std::string& url, bool activate) {
 
 Tab* TabManager::createBackground(const std::string& url) {
   Tab* tab = create(std::string(), false);
-  if (!url.empty()) {
+  if (!url.empty() && isLoadableUrl(url)) {
     tab->url = url;
     tab->pendingUrl = url;
     pendingLoads_.push_back(Job{tab->id, url});
@@ -230,11 +230,22 @@ void TabManager::close(int id, bool destroyed) {
       if (next) setActive(next->id);
     }
   }
+  // If the closed tab was the in-flight flush job, advance the queue.
+  if (flushJobId_ == id) {
+    flushJobId_ = 0;
+    ++flushToken_;
+    scheduleFlush(100);
+  }
   emitTabs();
 }
 
 void TabManager::OnTabCreated(Tab* tab, CefRefPtr<CefBrowser> browser) {
-  if (!tab || !tab->client) return;
+  // The tab may have been closed while CreateBrowser was in flight;
+  // close the orphaned browser immediately.
+  if (!tab || !tab->client || get(tab->id) != tab) {
+    if (browser && browser->GetHost()) browser->GetHost()->CloseBrowser(true);
+    return;
+  }
   tab->client->SetBrowser(browser);
   applyBounds(tab);
   syncVisibility();
@@ -261,6 +272,7 @@ bool TabManager::load(Tab* tab, const std::string& url) {
   ++tab->navSeq;
   CefRefPtr<CefBrowser> b = tab->client->browser();
   if (!b || !b->GetMainFrame()) return false;
+  tab->expectedNav = url;
   b->GetMainFrame()->LoadURL(url);
   return true;
 }
@@ -287,7 +299,10 @@ void TabManager::showError(Tab* tab, int code, const std::string& desc,
 
   if (tab->client && tab->client->browser()) {
     CefRefPtr<CefBrowser> b = tab->client->browser();
-    if (b && b->GetMainFrame()) b->GetMainFrame()->LoadURL(page);
+    if (b && b->GetMainFrame()) {
+      tab->expectedNav = page;
+      b->GetMainFrame()->LoadURL(page);
+    }
   }
   emitTabs();
   navState(tab);
@@ -367,6 +382,12 @@ void TabManager::OnLoadEnd(Tab* tab) {
 
 void TabManager::OnLoadError(Tab* tab, int code, const std::string& desc,
                              const std::string& url) {
+  // Failed background loads must also advance the flush queue.
+  if (tab && flushJobId_ != 0 && tab->id == flushJobId_) {
+    flushJobId_ = 0;
+    ++flushToken_;
+    scheduleFlush(200);
+  }
   showError(tab, code, desc, url);
 }
 
@@ -442,6 +463,8 @@ void TabManager::scheduleFlush(int delayMs) {
 }
 
 void TabManager::flushPending() {
+  // A background load is already in flight; don't start another.
+  if (flushJobId_ != 0) return;
   // Drop jobs whose tab went away or whose URL was superseded.
   std::vector<Job> keep;
   for (const auto& job : pendingLoads_) {

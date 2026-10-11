@@ -91,6 +91,7 @@ Web98Client::~Web98Client() = default;
 void Web98Client::Detach() {
   ctx_ = BrowserCtx();
   browser_ = nullptr;
+  detached_ = true;
 }
 
 void Web98Client::SendEvent(const std::string& channel, const Json& payload) {
@@ -371,7 +372,12 @@ void Web98Client::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
     ctx_.dialog->attachBrowser(browser);
     return;
   }
-  if (ctx_.tabs && ctx_.tab) ctx_.tabs->OnTabCreated(ctx_.tab, browser);
+  if (ctx_.tabs && ctx_.tab) {
+    ctx_.tabs->OnTabCreated(ctx_.tab, browser);
+  } else if (detached_) {
+    // The tab was closed while CreateBrowser was in flight; close the orphan.
+    if (browser->GetHost()) browser->GetHost()->CloseBrowser(true);
+  }
 }
 
 void Web98Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
@@ -398,6 +404,9 @@ bool Web98Client::OnBeforePopup(CefRefPtr<CefBrowser> browser,
     return true;
   }
   if (ctx_.tabs) {
+    // Chrome/dialog pages are local-only: block any attempt to open a
+    // web URL from them via window.open.
+    if (ctx_.role != BrowserCtx::kTab) return true;
     std::string current = ctx_.tab ? ctx_.tab->url : std::string();
     if (isLoadableUrl(url) && isAllowedNavigation(url, isWebUrl(current))) {
       ctx_.tabs->create(url, true);

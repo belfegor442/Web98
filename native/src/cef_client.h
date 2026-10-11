@@ -205,6 +205,7 @@ class Web98Client : public CefClient,
   std::string initialUrl_;
   bool firstLocalNav_ = true;
   bool closed_ = false;
+  bool detached_ = false;
 };
 
 }  // namespace web98

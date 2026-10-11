@@ -396,7 +396,8 @@ void runContextCommand(const std::string& id, const Json& params,
                        const CommandCtx& ctx) {
   AppCore& app = AppCore::get();
   TabManager* tabs = ctx.tabs;
-  Tab* tab = tabs ? tabs->active() : nullptr;
+  // Prefer the explicit target tab (right-clicked tab) over the active tab.
+  Tab* tab = ctx.tab ? ctx.tab : (tabs ? tabs->active() : nullptr);
   if (!tab || !tab->client) return;
   CefRefPtr<CefBrowser> b = tab->client->browser();
   if (!b) return;
