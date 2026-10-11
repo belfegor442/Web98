@@ -115,6 +115,13 @@
     else if (c === 'maximize' || c === 'restore') invoke('win:max');
     else if (c === 'close') invoke('win:close');
   });
+  // Native builds use frameless windows: the engine must start the move loop.
+  // Electron ignores the unknown channel (allowlist) and uses -webkit-app-region;
+  // double-click-to-maximize is detected natively on the second win:drag.
+  $('titlebar').addEventListener('mousedown', function (e) {
+    if (e.button !== 0 || e.target.closest('[data-control]')) return;
+    send('win:drag');
+  });
   api.on('win:state', function (s) {
     $('btn-max').setAttribute('data-control', s.maximized ? 'restore' : 'maximize');
     setTimeout(pushBounds, 60);
