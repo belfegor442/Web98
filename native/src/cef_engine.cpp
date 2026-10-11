@@ -107,6 +107,14 @@ Tab* TabManager::findByBrowser(int browserId) {
   return nullptr;
 }
 
+Tab* TabManager::findByHwnd(HWND h) {
+  if (!h) return nullptr;
+  for (auto& t : tabs_) {
+    if (hwndOf(t.get()) == h) return t.get();
+  }
+  return nullptr;
+}
+
 void TabManager::each(const std::function<void(Tab*)>& fn) {
   for (auto& t : tabs_) fn(t.get());
 }
@@ -231,6 +239,7 @@ void TabManager::OnTabCreated(Tab* tab, CefRefPtr<CefBrowser> browser) {
   applyBounds(tab);
   syncVisibility();
   HWND h = hwndOf(tab);
+  if (h && win_ && win_->hwnd()) subclassChild(h, win_->hwnd());
   if (tab->id == activeId_ && h) ::SetFocus(h);
 }
 
@@ -405,8 +414,9 @@ void TabManager::syncVisibility() {
   }
 }
 
-void TabManager::setZoom(double factor) {
-  Tab* t = active();
+void TabManager::setZoom(double factor) { setZoom(active(), factor); }
+
+void TabManager::setZoom(Tab* t, double factor) {
   if (!t) return;
   t->zoom = factor;
   if (t->client && t->client->browser()) {

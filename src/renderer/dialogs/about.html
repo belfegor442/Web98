@@ -63,8 +63,9 @@
             </p>
             <p class="note">
               Tabs, downloads, favorites, history, settings, certificate error
-              pages, per-origin permission grants &mdash; backed by Chromium via
-              Electron. This window tells the truth even when the pixels lie.
+              pages, per-origin permission grants &mdash; backed by a native
+              CEF (Chromium Embedded Framework) engine. This window tells
+              the truth even when the pixels lie.
             </p>
             <div class="stats" id="stats">Measuring...</div>
             <div class="easter" id="easter"></div>
@@ -80,13 +81,13 @@
       (function () {
         var v = (window.web98 && window.web98.versions) || {};
         document.getElementById('ver').textContent =
-          'Version 1.0 \u00b7 Electron ' + (v.electron || '?') +
+          'Version 1.0 \u00b7 CEF ' + (v.cef || '?') +
           ' / Chromium ' + (v.chrome || '?');
 
         function statsLine() {
-          return 'Electron ' + (v.electron || '?') +
+          return 'CEF ' + (v.cef || '?') +
             '\nChromium ' + (v.chrome || '?') +
-            '\nNode ' + (v.node || '?');
+            '\nEngine Native (C++)';
         }
         document.getElementById('stats').textContent = statsLine();
 

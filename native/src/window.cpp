@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <map>
 
 #include "app_core.h"
@@ -74,6 +75,24 @@ LRESULT CALLBACK ChildProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       }
       break;
     }
+    case WM_MOUSEWHEEL: {
+      if (top && (wp & MK_CONTROL)) {
+        MainWindow* mw = nullptr;
+        for (auto& w : AppCore::get().mainWindows()) {
+          if (w && w->hwnd() == top) { mw = w.get(); break; }
+        }
+        if (mw && mw->tabs()) {
+          Tab* tab = mw->tabs()->findByHwnd(hwnd);
+          if (tab) {
+            double delta = static_cast<short>(HIWORD(wp)) > 0 ? 0.25 : -0.25;
+            double z = std::min(3.0, std::max(0.25, tab->zoom + delta));
+            mw->tabs()->setZoom(tab, z);
+            return 0;
+          }
+        }
+      }
+      break;
+    }
     case WM_NCDESTROY:
       g_children.erase(hwnd);
       break;
@@ -83,6 +102,8 @@ LRESULT CALLBACK ChildProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
   return ::CallWindowProcW(orig, hwnd, msg, wp, lp);
 }
 
+}  // namespace
+
 void subclassChild(HWND child, HWND top) {
   if (!child || !top || g_children.count(child)) return;
   WNDPROC orig = reinterpret_cast<WNDPROC>(
@@ -90,8 +111,6 @@ void subclassChild(HWND child, HWND top) {
                           reinterpret_cast<LONG_PTR>(ChildProc)));
   if (orig) g_children[child] = ChildEntry{orig, top};
 }
-
-}  // namespace
 
 bool RegisterFrameClasses() {
   static bool done = false;

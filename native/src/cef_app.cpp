@@ -32,17 +32,23 @@ bool urlIsFilePage(const std::string& url, const std::string& fileUrl) {
 
 BridgeKind classifyFrame(const std::string& url) {
   if (url.compare(0, 5, "file:") != 0) return BridgeKind::None;
+  // Strip query and fragment so dialogs/history.html?q=1 still classifies.
+  std::string clean = url;
+  {
+    size_t cut = clean.find_first_of("?#");
+    if (cut != std::string::npos) clean.resize(cut);
+  }
   const std::string res = resourceDir();
-  if (urlIsFilePage(url, pathToFileUrl(pathJoin(res, "index.html"))))
+  if (urlIsFilePage(clean, pathToFileUrl(pathJoin(res, "index.html"))))
     return BridgeKind::Chrome;
-  if (urlIsFilePage(url, pathToFileUrl(pathJoin(res, "startpage.html"))))
+  if (urlIsFilePage(clean, pathToFileUrl(pathJoin(res, "startpage.html"))))
     return BridgeKind::Startpage;
-  if (urlIsFilePage(url, pathToFileUrl(pathJoin(res, "error.html"))))
+  if (urlIsFilePage(clean, pathToFileUrl(pathJoin(res, "error.html"))))
     return BridgeKind::Error;
   const std::string dialogBase =
       pathToFileUrl(pathJoin(pathJoin(res, "dialogs"), ""));
-  if (url.compare(0, dialogBase.size(), dialogBase) == 0 &&
-      url.find(".html", dialogBase.size()) == url.size() - 5) {
+  if (clean.compare(0, dialogBase.size(), dialogBase) == 0 &&
+      clean.find(".html", dialogBase.size()) == clean.size() - 5) {
     return BridgeKind::Dialog;
   }
   return BridgeKind::None;
@@ -139,6 +145,7 @@ std::string buildShim(const char* kind) {
     'downloads:open', 'downloads:pause', 'downloads:remove', 'downloads:resume',
     'downloads:showFolder',
     'history:clear', 'history:delete', 'history:list',
+    'home:action',
     'nav:back', 'nav:forward', 'nav:go', 'nav:home', 'nav:reload', 'nav:stop',
     'omni:suggest',
     'settings:clearData', 'settings:get', 'settings:grants',
@@ -146,7 +153,7 @@ std::string buildShim(const char* kind) {
     'settings:set',
     'tabs:activate', 'tabs:close', 'tabs:create', 'tabs:list',
     'win:close', 'win:isMax', 'win:max', 'win:min', 'win:title',
-    'window:open'
+    'window:close', 'window:open'
   ];
   var SEND = ['chrome:popup', 'ctx:command', 'win:drag'];
   var ON = [

@@ -130,7 +130,7 @@
         </div>
 
         <div class="dlg-foot">
-          <button class="w98-btn" id="btn-ok">OK</button>
+          <button class="w98-btn is-default" id="btn-ok">OK</button>
           <button class="w98-btn" id="btn-cancel">Cancel</button>
           <button class="w98-btn" id="btn-apply">Apply</button>
         </div>
@@ -296,6 +296,15 @@
           fill();
         });
         loadGrants();
+        /* Live-update when settings change externally (View menu toggles). */
+        dlg.on('settings:changed', function (s) {
+          if (!s) return;
+          current = s;
+          if (JSON.stringify(pending) === JSON.stringify(current)) {
+            pending = Object.assign({}, s);
+            fill();
+          }
+        });
       })();
     </script>
   </body>

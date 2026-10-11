@@ -107,4 +107,8 @@ class DialogWindow {
 // Registers the window classes (idempotent).
 bool RegisterFrameClasses();
 
+// Subclasses a CEF child HWND so ChildProc can route hit-testing/cursor
+// back to the owning top-level window. Idempotent per child.
+void subclassChild(HWND child, HWND top);
+
 }  // namespace web98

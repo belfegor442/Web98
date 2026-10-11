@@ -391,6 +391,10 @@ void AppCore::broadcast(const std::string& channel, const Json& payload) {
   for (auto& w : mainWindows_)
     if (w) windows.push_back(w.get());
   for (auto* w : windows) w->emit(channel, payload);
+  std::vector<DialogWindow*> dialogs;
+  for (auto& d : dialogs_)
+    if (d) dialogs.push_back(d.get());
+  for (auto* d : dialogs) d->emit(channel, payload);
 }
 
 void AppCore::OnDownloadsChanged() {
@@ -638,7 +642,15 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
                           ? arg.find("id")->stringOr("")
                           : "";
     if (!contextCommandOk(cid)) return;
+    // Find the tab that owns the pending context params (the right-clicked
+    // tab may differ from the active tab).
     Tab* tab = t->active();
+    if (tab && tab->lastCtx.isNull()) {
+      t->each([&tab](Tab* candidate) {
+        if (!tab->lastCtx.isNull()) return;
+        if (candidate && !candidate->lastCtx.isNull()) tab = candidate;
+      });
+    }
     if (!tab || tab->lastCtx.isNull()) return;
     const Json* params = tab->lastCtx.find("params");
     Json p = params ? *params : Json::makeObject();
@@ -884,6 +896,8 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
         return;
       }
       confirmDangerousDownload(static_cast<int>(did));
+      o.obj.emplace_back("ok", Json::makeBool(true));
+      reply(std::move(o));
       return;
     } else if (channel == "downloads:showFolder") {
       Json o = Json::makeObject();

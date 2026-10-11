@@ -182,8 +182,8 @@
         { cmd: 'view:stop', label: 'Stop', hint: 'Esc' },
         { cmd: 'view:refresh', label: 'Refresh', hint: 'F5' },
         { sep: true },
-        { check: 'toolbarVisible', label: 'Toolbar' },
-        { check: 'statusBar', label: 'Status Bar' },
+        { cmd: 'view:toolbar', check: 'toolbarVisible', label: 'Toolbar' },
+        { cmd: 'view:statusbar', check: 'statusBar', label: 'Status Bar' },
         { sep: true },
         {
           label: 'Text Size', sub: [

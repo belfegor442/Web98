@@ -67,6 +67,7 @@ class TabManager {
   void setBounds(int x, int y, int w, int h);
   void setPopupHidden(bool hidden);
   void setZoom(double factor);
+  void setZoom(Tab* tab, double factor);
   void showError(Tab* tab, int code, const std::string& desc,
                  const std::string& url);
 
@@ -77,6 +78,7 @@ class TabManager {
   int count() const { return static_cast<int>(tabs_.size()); }
   void each(const std::function<void(Tab*)>& fn);
   Tab* findByBrowser(int browserId);
+  Tab* findByHwnd(HWND h);
 
   // --- events (coalesced, one per message-loop turn) -----------------------
   void emitTabs();
