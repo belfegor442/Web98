@@ -159,8 +159,33 @@ bool Web98Client::RunContextMenu(CefRefPtr<CefBrowser> browser,
   tab->lastCtx = store;
 
   Json menu = Json::makeObject();
-  menu.obj.emplace_back("x", Json::makeNumber(params->GetXCoord()));
-  menu.obj.emplace_back("y", Json::makeNumber(params->GetYCoord()));
+  // CEF view coords are DIP relative to the tab browser's client area.
+  // Convert to chrome-page CSS pixels: DIP -> physical -> screen ->
+  // chrome client physical -> chrome CSS.
+  int cefX = params->GetXCoord();
+  int cefY = params->GetYCoord();
+  {
+    HWND tabHwnd = nullptr;
+    if (tab->client && tab->client->browser()) {
+      auto host = tab->client->browser()->GetHost();
+      if (host) tabHwnd = host->GetWindowHandle();
+    }
+    HWND chromeHwnd = ctx_.window ? ctx_.window->hwnd() : nullptr;
+    if (tabHwnd && chromeHwnd) {
+      UINT tabDpi = ::GetDpiForWindow(tabHwnd);
+      double tabScale = tabDpi ? tabDpi / 96.0 : 1.0;
+      POINT pt = {static_cast<LONG>(cefX * tabScale),
+                  static_cast<LONG>(cefY * tabScale)};
+      ::ClientToScreen(tabHwnd, &pt);
+      ::ScreenToClient(chromeHwnd, &pt);
+      UINT chromeDpi = ::GetDpiForWindow(chromeHwnd);
+      double chromeScale = chromeDpi ? chromeDpi / 96.0 : 1.0;
+      cefX = static_cast<int>(pt.x / chromeScale);
+      cefY = static_cast<int>(pt.y / chromeScale);
+    }
+  }
+  menu.obj.emplace_back("x", Json::makeNumber(cefX));
+  menu.obj.emplace_back("y", Json::makeNumber(cefY));
   menu.obj.emplace_back("items", contextTemplate(p, canBack, canForward, tab->loading));
   // Electron's `emit` on a tab state targets that window's chrome renderer.
   if (ctx_.window) ctx_.window->emit("ctx", menu);

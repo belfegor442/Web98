@@ -662,12 +662,10 @@
   var ctxActive = false;
 
   api.on('ctx', function (data) {
+    // Native sends chrome-page CSS coordinates (already converted from
+    // the tab browser's view space via ClientToScreen/ScreenToClient).
     var x = data.x;
     var y = data.y;
-    if (lastBounds) {
-      x = lastBounds.x + data.x;
-      y = lastBounds.y + data.y;
-    }
     var items = (data.items || []).map(function (i) {
       if (i.sep) return { sep: true };
       return {
