@@ -662,10 +662,11 @@
   var ctxActive = false;
 
   api.on('ctx', function (data) {
-    // Native sends chrome-page CSS coordinates (already converted from
-    // the tab browser's view space via ClientToScreen/ScreenToClient).
-    var x = data.x;
-    var y = data.y;
+    // Native sends physical pixels relative to the chrome client area.
+    // Convert to CSS pixels for position:fixed.
+    var dpr = window.devicePixelRatio || 1;
+    var x = data.x / dpr;
+    var y = data.y / dpr;
     var items = (data.items || []).map(function (i) {
       if (i.sep) return { sep: true };
       return {

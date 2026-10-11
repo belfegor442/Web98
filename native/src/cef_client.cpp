@@ -160,8 +160,7 @@ bool Web98Client::RunContextMenu(CefRefPtr<CefBrowser> browser,
 
   Json menu = Json::makeObject();
   // CEF view coords are DIP relative to the tab browser's client area.
-  // Convert to chrome-page CSS pixels: DIP -> physical -> screen ->
-  // chrome client physical -> chrome CSS.
+  // Convert to screen physical pixels, then to chrome-page CSS via DPR.
   int cefX = params->GetXCoord();
   int cefY = params->GetYCoord();
   {
@@ -170,7 +169,10 @@ bool Web98Client::RunContextMenu(CefRefPtr<CefBrowser> browser,
       auto host = tab->client->browser()->GetHost();
       if (host) tabHwnd = host->GetWindowHandle();
     }
-    HWND chromeHwnd = ctx_.window ? ctx_.window->hwnd() : nullptr;
+    HWND chromeHwnd = nullptr;
+    if (ctx_.window && ctx_.window->chrome() && ctx_.window->chrome()->GetHost()) {
+      chromeHwnd = ctx_.window->chrome()->GetHost()->GetWindowHandle();
+    }
     if (tabHwnd && chromeHwnd) {
       UINT tabDpi = ::GetDpiForWindow(tabHwnd);
       double tabScale = tabDpi ? tabDpi / 96.0 : 1.0;
@@ -178,10 +180,10 @@ bool Web98Client::RunContextMenu(CefRefPtr<CefBrowser> browser,
                   static_cast<LONG>(cefY * tabScale)};
       ::ClientToScreen(tabHwnd, &pt);
       ::ScreenToClient(chromeHwnd, &pt);
-      UINT chromeDpi = ::GetDpiForWindow(chromeHwnd);
-      double chromeScale = chromeDpi ? chromeDpi / 96.0 : 1.0;
-      cefX = static_cast<int>(pt.x / chromeScale);
-      cefY = static_cast<int>(pt.y / chromeScale);
+      // Send physical pixels relative to chrome client; JS divides by
+      // window.devicePixelRatio to get CSS coordinates.
+      cefX = pt.x;
+      cefY = pt.y;
     }
   }
   menu.obj.emplace_back("x", Json::makeNumber(cefX));
