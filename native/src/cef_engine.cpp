@@ -14,6 +14,13 @@
 namespace web98 {
 namespace {
 
+// chrome:bounds reports CSS pixels (getBoundingClientRect); Win32 child
+// placement needs physical pixels. Scale by the window DPI.
+int cssToPhys(HWND hwnd, int v) {
+  UINT dpi = ::GetDpiForWindow(hwnd);
+  return dpi ? ::MulDiv(v, dpi, 96) : v;
+}
+
 bool isHttpUrl(const std::string& url) {
   return startsWith(url, "http:") || startsWith(url, "https:");
 }
@@ -117,8 +124,10 @@ bool TabManager::ensureBrowser(Tab* tab, const std::string& initialUrl) {
   tab->client = new Web98Client(ctx, url);
 
   CefWindowInfo wi;
-  wi.SetAsChild(win_->hwnd(),
-                CefRect(boundsX_, boundsY_, boundsW_, boundsH_));
+  HWND owner = win_->hwnd();
+  wi.SetAsChild(owner,
+                CefRect(cssToPhys(owner, boundsX_), cssToPhys(owner, boundsY_),
+                        cssToPhys(owner, boundsW_), cssToPhys(owner, boundsH_)));
   wi.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
   CefBrowserSettings settings;
   settings.background_color = CefColorSetARGB(255, 255, 255, 255);
@@ -365,7 +374,12 @@ void TabManager::setBounds(int x, int y, int w, int h) {
 void TabManager::applyBounds(Tab* tab) {
   HWND h = hwndOf(tab);
   if (!h) return;
-  ::MoveWindow(h, boundsX_, boundsY_, boundsW_, boundsH_, TRUE);
+  HWND owner = win_->hwnd();
+  int px = cssToPhys(owner, boundsX_);
+  int py = cssToPhys(owner, boundsY_);
+  int pw = cssToPhys(owner, boundsW_);
+  int ph = cssToPhys(owner, boundsH_);
+  ::MoveWindow(h, px, py, pw, ph, TRUE);
 }
 
 void TabManager::setPopupHidden(bool hidden) {
