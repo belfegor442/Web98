@@ -98,9 +98,9 @@
               });
               if (!rows.length) {
                 var none = document.createElement('div');
-                none.className = 'row';
-                none.style.color = '#808080';
-                none.textContent = query ? 'No matching pages.' : 'No history yet.';
+                none.className = 'empty';
+                none.innerHTML = '<span class="ico"></span><span class="msg">' +
+                  (query ? 'No matching pages.' : 'No history yet.') + '</span>';
                 list.appendChild(none);
               }
             });

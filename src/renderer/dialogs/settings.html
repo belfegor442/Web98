@@ -36,6 +36,7 @@
           <div class="dlg-tab is-active" data-pane="general">General</div>
           <div class="dlg-tab" data-pane="security">Security</div>
           <div class="dlg-tab" data-pane="privacy">Privacy</div>
+          <div class="dlg-tab" data-pane="content">Content</div>
         </div>
 
         <!-- General -->
@@ -129,6 +130,41 @@
           </fieldset>
         </div>
 
+        <!-- Content -->
+        <div class="dlg-pane" id="pane-content" hidden>
+          <fieldset class="w98-group grp">
+            <legend>Certificates</legend>
+            <div class="pane-note">
+              Web98 uses the system certificate store. Pages with invalid
+              certificates show an error screen where you can explicitly
+              continue at your own risk.
+            </div>
+            <div class="btn-row">
+              <button class="w98-btn small" disabled>Certificates...</button>
+              <button class="w98-btn small" disabled>Publishers...</button>
+            </div>
+          </fieldset>
+          <fieldset class="w98-group grp">
+            <legend>Personal information</legend>
+            <div class="pane-note">
+              AutoComplete can suggest addresses, forms and passwords as you
+              type in the address bar. Web98 never sends this data anywhere.
+            </div>
+            <label class="w98-check">
+              <input type="checkbox" checked disabled />
+              Address bar suggestions from History and Favorites
+            </label>
+          </fieldset>
+          <fieldset class="w98-group grp">
+            <legend>Web98 engine</legend>
+            <div class="pane-note">
+              Rendering: Chromium Embedded Framework (CEF)<br />
+              Interface: native Win32 + HTML/CSS chrome<br />
+              Storage: SQLite (favorites, history, cookies, settings)
+            </div>
+          </fieldset>
+        </div>
+
         <div class="dlg-foot">
           <button class="w98-btn is-default" id="btn-ok">OK</button>
           <button class="w98-btn" id="btn-cancel">Cancel</button>
@@ -148,7 +184,7 @@
             document.querySelectorAll('.dlg-tab').forEach(function (t) {
               t.classList.toggle('is-active', t === tab);
             });
-            ['general', 'security', 'privacy'].forEach(function (name) {
+            ['general', 'security', 'privacy', 'content'].forEach(function (name) {
               document.getElementById('pane-' + name).hidden = name !== tab.dataset.pane;
             });
           });

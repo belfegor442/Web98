@@ -136,6 +136,27 @@ body { margin: 0; overflow: hidden; }
 .w98-list .row:hover .dim,
 .w98-list .row.is-sel .dim { color: #d0d0ff; }
 
+/* empty state inside lists */
+.w98-list .empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 12px;
+  color: #808080;
+  text-align: center;
+  user-select: none;
+  cursor: default;
+}
+.w98-list .empty .ico {
+  width: 32px;
+  height: 32px;
+  opacity: 0.45;
+  background: no-repeat center/contain url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23808080' d='M4 4h16v16H4z'/><path fill='%23c0c0c0' d='M6 6h12v12H6z'/><path stroke='%23808080' stroke-width='1.5' d='M8 12h8M12 8v8'/></svg>");
+}
+.w98-list .empty .msg { font-size: 11px; }
+
 /* footer button row */
 .dlg-foot {
   display: flex;
@@ -159,9 +180,11 @@ body { margin: 0; overflow: hidden; }
 /* generic dialog tabs (settings) */
 .dlg-tabs {
   display: flex;
-  gap: 2px;
+  gap: 0;
   align-items: flex-end;
   flex: 0 0 auto;
+  padding-left: 4px;
+  border-bottom: 1px solid #808080;
 }
 .dlg-tab {
   font-size: 11px;
@@ -175,12 +198,16 @@ body { margin: 0; overflow: hidden; }
   cursor: default;
   position: relative;
   top: 2px;
+  margin-right: -1px;
+  white-space: nowrap;
 }
+.dlg-tab:hover:not(.is-active) { background: #d4d4d4; }
 .dlg-tab.is-active {
   padding: 4px 12px 4px 12px;
   top: 0;
   font-weight: bold;
   z-index: 2;
+  border-bottom: 1px solid #c0c0c0;
 }
 .dlg-pane {
   border: 1px solid #808080;
@@ -195,3 +222,13 @@ body { margin: 0; overflow: hidden; }
   gap: 10px;
 }
 .dlg-pane[hidden] { display: none; }
+
+/* focus ring for buttons/inputs inside dialogs */
+.w98-btn:focus-visible,
+.w98-input:focus-visible,
+.w98-select:focus-visible,
+.w98-check:focus-within,
+.dlg-tab:focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: -3px;
+}

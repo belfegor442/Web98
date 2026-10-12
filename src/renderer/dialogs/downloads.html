@@ -131,9 +131,8 @@
           buttons.clear.disabled = !anyFinished;
           if (!items || !items.length) {
             var none = document.createElement('div');
-            none.className = 'row';
-            none.style.color = '#808080';
-            none.textContent = 'No downloads.';
+            none.className = 'empty';
+            none.innerHTML = '<span class="ico"></span><span class="msg">No downloads.</span>';
             list.appendChild(none);
             updateButtons(null);
           }

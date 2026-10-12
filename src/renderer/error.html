@@ -109,10 +109,19 @@
   }
   body.is-cert .lock { display: block; }
   .warning { color: #a00000; font-weight: bold; }
+  .page-ico {
+    float: left;
+    width: 32px;
+    height: 32px;
+    margin: 0 12px 6px 0;
+    background: no-repeat center/28px url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23fff' stroke='%23000' d='M5 2h9l5 5v15H5z'/><path fill='%23c0c0c0' d='M14 2l5 5h-5z'/><path stroke='%23a00' stroke-width='2' d='M8 12l8 8M16 12l-8 8'/></svg>");
+  }
+  body.is-cert .page-ico { display: none; }
 </style>
 </head>
 <body>
 <div class="wrap">
+  <div class="page-ico"></div>
   <div class="lock"></div>
   <h1 id="headline">The page cannot be displayed</h1>
   <div class="rule"></div>

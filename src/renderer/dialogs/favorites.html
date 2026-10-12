@@ -125,9 +125,8 @@
           walk(0, 0);
           if (!all.length) {
             var none = document.createElement('div');
-            none.className = 'row';
-            none.style.color = '#808080';
-            none.textContent = 'No favorites yet.';
+            none.className = 'empty';
+            none.innerHTML = '<span class="ico"></span><span class="msg">No favorites yet.</span>';
             list.appendChild(none);
           }
         }
