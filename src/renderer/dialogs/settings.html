@@ -37,6 +37,7 @@
           <div class="dlg-tab" data-pane="security">Security</div>
           <div class="dlg-tab" data-pane="privacy">Privacy</div>
           <div class="dlg-tab" data-pane="content">Content</div>
+          <div class="dlg-tab" data-pane="advanced">Advanced</div>
         </div>
 
         <!-- General -->
@@ -165,6 +166,47 @@
           </fieldset>
         </div>
 
+        <!-- Advanced -->
+        <div class="dlg-pane" id="pane-advanced" hidden>
+          <fieldset class="w98-group grp">
+            <legend>Accessibility</legend>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-anim" checked />
+              Allow smooth animations (marquees, blinkies)
+            </label>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-focus" />
+              Always show keyboard focus outlines
+            </label>
+          </fieldset>
+          <fieldset class="w98-group grp">
+            <legend>Security</legend>
+            <label class="w98-check">
+              <input type="checkbox" checked disabled />
+              Warn before leaving secure pages (always on)
+            </label>
+            <label class="w98-check">
+              <input type="checkbox" checked disabled />
+              Check for certificate revocation (always on)
+            </label>
+          </fieldset>
+          <fieldset class="w98-group grp">
+            <legend>Browsing</legend>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-links" />
+              Show Links bar under the address bar
+            </label>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-throb" checked />
+              Animate the throbber while loading
+            </label>
+          </fieldset>
+          <div class="pane-note">
+            Advanced settings apply immediately. Some options are locked
+            for security and cannot be changed.
+          </div>
+        </div>
+
         <div class="dlg-foot">
           <button class="w98-btn is-default" id="btn-ok">OK</button>
           <button class="w98-btn" id="btn-cancel">Cancel</button>
@@ -184,7 +226,7 @@
             document.querySelectorAll('.dlg-tab').forEach(function (t) {
               t.classList.toggle('is-active', t === tab);
             });
-            ['general', 'security', 'privacy', 'content'].forEach(function (name) {
+            ['general', 'security', 'privacy', 'content', 'advanced'].forEach(function (name) {
               document.getElementById('pane-' + name).hidden = name !== tab.dataset.pane;
             });
           });

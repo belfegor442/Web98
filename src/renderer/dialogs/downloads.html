@@ -25,6 +25,30 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      /* Win98 progress bar inside download rows */
+      .dl-prog {
+        flex: 0 0 90px;
+        height: 14px;
+        background: #fff;
+        border-top: 1px solid #808080;
+        border-left: 1px solid #808080;
+        border-right: 1px solid #fff;
+        border-bottom: 1px solid #fff;
+        overflow: hidden;
+        display: none;
+      }
+      .row.is-active .dl-prog { display: block; }
+      .dl-prog i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: repeating-linear-gradient(90deg, #000080 0 8px, transparent 8px 10px);
+        transition: width 0.2s linear;
+      }
+      @keyframes dl-slide {
+        from { background-position-x: 0; }
+        to { background-position-x: 10px; }
+      }
     </style>
   </head>
   <body>
@@ -111,7 +135,8 @@
             var row = document.createElement('div');
             row.className = 'row' +
               (d.state === 'completed' ? ' is-done' : '') +
-              (d.state === 'interrupted' || d.state === 'cancelled' ? ' is-err' : '');
+              (d.state === 'interrupted' || d.state === 'cancelled' ? ' is-err' : '') +
+              (d.state === 'progressing' || d.state === 'paused' ? ' is-active' : '');
             row._item = d;
             var img = document.createElement('img');
             img.src = '../../../assets/ie5/assets/favorites.png';
@@ -121,6 +146,19 @@
             grow.textContent = d.filename;
             grow.title = d.savePath;
             row.appendChild(grow);
+            if (d.state === 'progressing' || d.state === 'paused') {
+              var prog = document.createElement('span');
+              prog.className = 'dl-prog';
+              var bar = document.createElement('i');
+              if (d.total > 0) {
+                bar.style.width = Math.min(100, Math.round((d.received / d.total) * 100)) + '%';
+              } else {
+                bar.style.width = '30%';
+                bar.style.animation = 'dl-slide 1.2s linear infinite';
+              }
+              prog.appendChild(bar);
+              row.appendChild(prog);
+            }
             var st = document.createElement('span');
             st.className = 'dl-status';
             st.textContent = statusText(d);
