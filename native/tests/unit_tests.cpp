@@ -337,12 +337,38 @@ void runStorage() {
   CHECK_EQ_INT(n, bm.size(), 1);
   CHECK_EQ_STR(n, bm[0].name, "Root item");
 
+  // Quick-access (speed dial) pin/unpin + list.
+  BookmarkRow a = s.addBookmark(0, "Alpha", "https://a.example/", -1);
+  BookmarkRow b = s.addBookmark(0, "Beta", "https://b.example/", -1);
+  s.addBookmark(0, "Folder", "", -1);  // folders never appear in quick list
+  CHECK_EQ_INT(n, (int)s.listQuickBookmarks().size(), 0);
+  bool quick = true;
+  CHECK(n, s.toggleBookmarkQuick(a.id, &quick));
+  CHECK(n, quick);
+  quick = true;
+  CHECK(n, s.toggleBookmarkQuick(b.id, &quick));
+  CHECK(n, quick);
+  auto qrows = s.listQuickBookmarks();
+  CHECK_EQ_INT(n, (int)qrows.size(), 2);
+  CHECK_EQ_STR(n, qrows[0].name, "Alpha");
+  CHECK_EQ_STR(n, qrows[1].name, "Beta");
+  // Toggle off removes from quick list; toggling twice is idempotent.
+  CHECK(n, s.toggleBookmarkQuick(a.id, &quick));
+  CHECK(n, !quick);
+  CHECK_EQ_INT(n, (int)s.listQuickBookmarks().size(), 1);
+  BookmarkRow aRow;
+  CHECK(n, s.getBookmark(a.id, aRow));
+  CHECK(n, !aRow.quick);
+
   // Persistence across reopen.
   s.close();
   Storage s2;
   CHECK(n, s2.open(db));
   CHECK_EQ_INT(n, s2.countHistory(), 0);
-  CHECK_EQ_INT(n, s2.countBookmarks(), 1);
+  CHECK_EQ_INT(n, s2.countBookmarks(), 4);
+  auto q2 = s2.listQuickBookmarks();
+  CHECK_EQ_INT(n, (int)q2.size(), 1);
+  CHECK_EQ_STR(n, q2[0].name, "Beta");
   s2.close();
   ::DeleteFileA(db.c_str());
 }

@@ -17,6 +17,10 @@ const char* kSchema =
     "parent INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL, "
     "url TEXT NOT NULL DEFAULT \"\", position INTEGER NOT NULL DEFAULT 0);"
     "CREATE INDEX IF NOT EXISTS bookmarks_parent ON bookmarks (parent, position);";
+// Migration: add quick-access column. ALTER is a no-op error if it exists,
+// which we ignore.
+const char* kMigrateQuick =
+    "ALTER TABLE bookmarks ADD COLUMN quick INTEGER NOT NULL DEFAULT 0;";
 
 std::string columnText(sqlite3_stmt* st, int col) {
   const unsigned char* p = sqlite3_column_text(st, col);
@@ -57,6 +61,7 @@ bool Storage::open(const std::string& path, int historyLimit) {
     close();
     return false;
   }
+  exec(kMigrateQuick);  // add quick column when upgrading an existing db
 
   stGetSetting_ = prep("SELECT value FROM settings WHERE key = ?");
   stSetSetting_ =
@@ -79,14 +84,17 @@ bool Storage::open(const std::string& path, int historyLimit) {
       prep("DELETE FROM history WHERE id NOT IN "
            "(SELECT id FROM history ORDER BY ts DESC, id DESC LIMIT ?)");
   stAddBookmark_ =
-      prep("INSERT INTO bookmarks (parent, name, url, position) VALUES (?, ?, ?, ?)");
+      prep("INSERT INTO bookmarks (parent, name, url, position, quick) "
+           "VALUES (?, ?, ?, ?, ?)");
   stListBookmarks_ =
-      prep("SELECT id, parent, name, url, position FROM bookmarks "
+      prep("SELECT id, parent, name, url, position, quick FROM bookmarks "
            "ORDER BY parent, position, id");
   stGetBookmark_ =
-      prep("SELECT id, parent, name, url, position FROM bookmarks WHERE id = ?");
+      prep("SELECT id, parent, name, url, position, quick FROM bookmarks "
+           "WHERE id = ?");
   stRenameBookmark_ = prep("UPDATE bookmarks SET name = ?, url = ? WHERE id = ?");
   stMoveBookmark_ = prep("UPDATE bookmarks SET parent = ?, position = ? WHERE id = ?");
+  stToggleQuick_ = prep("UPDATE bookmarks SET quick = NOT quick WHERE id = ?");
   stDelTree_ =
       prep("WITH RECURSIVE sub(id) AS ("
            "SELECT id FROM bookmarks WHERE id = ? "
@@ -130,6 +138,7 @@ void Storage::close() {
   drop(stDelTree_);
   drop(stNextPos_);
   drop(stCountBookmarks_);
+  drop(stToggleQuick_);
   if (db_) {
     sqlite3_close(db_);
     db_ = nullptr;
@@ -275,6 +284,7 @@ BookmarkRow Storage::addBookmark(int64_t parent, const std::string& name,
   sqlite3_bind_text(stAddBookmark_, 2, name.c_str(), static_cast<int>(name.size()), SQLITE_TRANSIENT);
   sqlite3_bind_text(stAddBookmark_, 3, url.c_str(), static_cast<int>(url.size()), SQLITE_TRANSIENT);
   sqlite3_bind_int64(stAddBookmark_, 4, position);
+  sqlite3_bind_int64(stAddBookmark_, 5, 0);
   sqlite3_step(stAddBookmark_);
   sqlite3_reset(stAddBookmark_);
   int64_t id = static_cast<int64_t>(sqlite3_last_insert_rowid(db_));
@@ -293,6 +303,7 @@ std::vector<BookmarkRow> Storage::listBookmarks() {
     r.name = columnText(stListBookmarks_, 2);
     r.url = columnText(stListBookmarks_, 3);
     r.position = sqlite3_column_int64(stListBookmarks_, 4);
+    r.quick = sqlite3_column_int64(stListBookmarks_, 5) != 0;
     out.push_back(std::move(r));
   }
   sqlite3_reset(stListBookmarks_);
@@ -310,6 +321,7 @@ bool Storage::getBookmark(int64_t id, BookmarkRow& out) {
     out.name = columnText(stGetBookmark_, 2);
     out.url = columnText(stGetBookmark_, 3);
     out.position = sqlite3_column_int64(stGetBookmark_, 4);
+    out.quick = sqlite3_column_int64(stGetBookmark_, 5) != 0;
   }
   sqlite3_reset(stGetBookmark_);
   return ok;
@@ -351,6 +363,26 @@ int64_t Storage::countBookmarks() {
   if (sqlite3_step(stCountBookmarks_) == SQLITE_ROW) n = sqlite3_column_int64(stCountBookmarks_, 0);
   sqlite3_reset(stCountBookmarks_);
   return n;
+}
+
+bool Storage::toggleBookmarkQuick(int64_t id, bool* outQuick) {
+  if (!stToggleQuick_) return false;
+  sqlite3_reset(stToggleQuick_);
+  sqlite3_bind_int64(stToggleQuick_, 1, id);
+  bool ok = sqlite3_step(stToggleQuick_) == SQLITE_DONE;
+  sqlite3_reset(stToggleQuick_);
+  if (ok && outQuick) {
+    BookmarkRow row;
+    if (getBookmark(id, row)) *outQuick = row.quick;
+  }
+  return ok;
+}
+
+std::vector<BookmarkRow> Storage::listQuickBookmarks() {
+  std::vector<BookmarkRow> out;
+  for (auto& b : listBookmarks())
+    if (b.quick && !b.url.empty()) out.push_back(std::move(b));
+  return out;
 }
 
 }  // namespace web98

@@ -205,8 +205,50 @@ button {
   flex: 0 0 auto;
 }
 .panel-item span {
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.panel-item.is-quick span {
+  font-weight: bold;
+}
+.panel-pin {
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #b0b0b0;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  visibility: hidden;
+}
+.panel-item:hover .panel-pin,
+.panel-item.is-quick .panel-pin {
+  visibility: visible;
+}
+.panel-item.is-quick .panel-pin {
+  color: #c8a000;
+}
+.panel-pin:hover {
+  color: #000080;
+  border-color: #808080;
+  background: #dfdfdf;
+}
+.panel-item:hover .panel-pin:hover {
+  color: #ffff00;
+  background: #0000c0;
+  border-color: #ffff00;
+}
+.panel-group {
+  margin-top: 6px;
+  padding: 2px 4px;
+  font-weight: bold;
+  color: #000080;
+  border-bottom: 1px solid #c0c0c0;
+}
+.panel-group:first-child {
+  margin-top: 0;
 }
 .panel-item small {
   margin-left: auto;

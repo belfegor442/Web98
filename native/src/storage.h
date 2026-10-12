@@ -27,6 +27,7 @@ struct BookmarkRow {
   std::string name;
   std::string url;
   int64_t position = 0;
+  bool quick = false;
 };
 
 struct HistoryQuery {
@@ -72,6 +73,8 @@ class Storage {
   void moveBookmark(int64_t id, int64_t parent, int64_t position);
   void deleteBookmarkTree(int64_t id);
   int64_t countBookmarks();
+  bool toggleBookmarkQuick(int64_t id, bool* outQuick = nullptr);
+  std::vector<BookmarkRow> listQuickBookmarks();
 
  private:
   bool exec(const char* sql);
@@ -101,6 +104,7 @@ class Storage {
   sqlite3_stmt* stDelTree_ = nullptr;
   sqlite3_stmt* stNextPos_ = nullptr;
   sqlite3_stmt* stCountBookmarks_ = nullptr;
+  sqlite3_stmt* stToggleQuick_ = nullptr;
 };
 
 }  // namespace web98

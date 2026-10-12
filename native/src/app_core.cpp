@@ -59,6 +59,7 @@ Json bookmarkToJson(const BookmarkRow& b) {
   o.obj.emplace_back("name", Json::makeString(b.name));
   o.obj.emplace_back("url", Json::makeString(b.url));
   o.obj.emplace_back("position", Json::makeNumber(static_cast<double>(b.position)));
+  o.obj.emplace_back("quick", Json::makeBool(b.quick));
   return o;
 }
 
@@ -771,6 +772,34 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
         broadcast("bookmarks:changed", Json::makeNull());
       }
       if (isInvoke) replyNull();
+      return;
+    }
+    if (channel == "bookmarks:toggle-quick") {
+      int64_t bid = 0;
+      const Json* idv = arg.isObject() ? arg.find("id") : nullptr;
+      if (idv && sanitizeId(*idv, bid)) {
+        bool quick = false;
+        storage_.toggleBookmarkQuick(bid, &quick);
+        broadcast("bookmarks:changed", Json::makeNull());
+        Json o = Json::makeObject();
+        o.obj.emplace_back("quick", Json::makeBool(quick));
+        if (isInvoke) reply(std::move(o));
+        return;
+      }
+      if (isInvoke) replyNull();
+      return;
+    }
+    if (channel == "bookmarks:quick") {
+      Json arr = Json::makeArray();
+      int limit = 12;
+      const Json* lv = arg.isObject() ? arg.find("limit") : nullptr;
+      if (lv && lv->isNumber()) limit = std::max(1, std::min((int)lv->num, 32));
+      int n = 0;
+      for (const auto& b : storage_.listQuickBookmarks()) {
+        if (n++ >= limit) break;
+        arr.arr.push_back(bookmarkToJson(b));
+      }
+      reply(std::move(arr));
       return;
     }
     if (channel == "bookmarks:export") {

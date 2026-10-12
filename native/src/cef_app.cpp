@@ -139,7 +139,8 @@ std::string buildShim(const char* kind) {
   var INVOKE = [
     'app:command', 'app:find', 'app:open-url', 'app:stats', 'app:view-source',
     'bookmarks:add', 'bookmarks:export', 'bookmarks:import', 'bookmarks:list',
-    'bookmarks:remove', 'bookmarks:update',
+    'bookmarks:quick', 'bookmarks:remove', 'bookmarks:toggle-quick',
+    'bookmarks:update',
     'chrome:bounds',
     'downloads:cancel', 'downloads:clearFinished', 'downloads:list',
     'downloads:open', 'downloads:pause', 'downloads:remove', 'downloads:resume',
@@ -212,6 +213,21 @@ std::string buildShim(const char* kind) {
           name: String(name || ''),
           arg: arg == null ? '' : String(arg)
         });
+      },
+      quick: function () {
+        return api.invoke('bookmarks:quick', null);
+      },
+      list: function () {
+        return api.invoke('bookmarks:list', null);
+      },
+      history: function (limit) {
+        return api.invoke('history:list', { limit: Number(limit) || 8 });
+      },
+      open: function (url) {
+        return api.invoke('home:action', { name: 'search', arg: String(url || '') });
+      },
+      toggleQuick: function (id) {
+        return api.invoke('bookmarks:toggle-quick', { id: Number(id) || 0 });
       }
     };
   } else if (kind === 'error') {

@@ -593,17 +593,33 @@
       invoke('bookmarks:list').then(function (all) {
         if (sidePanelMode !== 'favorites') return;
         var items = all.filter(function (b) { return b.url; });
+        var quick = items.filter(function (b) { return b.quick; });
         if (!items.length) {
           el('div', 'panel-empty', body).textContent = 'No favorites yet.';
         }
-        items.forEach(function (b) {
-          var row = el('div', 'panel-item', body);
+        function addRow(b, pinned) {
+          var row = el('div', 'panel-item' + (b.quick ? ' is-quick' : ''), body);
           var img = el('img', null, row);
           img.src = '../../assets/ie5/assets/favorites.png';
           el('span', null, row).textContent = b.name;
           row.title = b.url;
           row.addEventListener('click', function () { navigate(b.url); });
-        });
+          var pin = el('button', 'panel-pin', row);
+          pin.type = 'button';
+          pin.textContent = '★';
+          pin.title = b.quick ? 'Remove from Quick Access' : 'Pin to Quick Access';
+          pin.setAttribute('aria-label', pin.title);
+          pin.addEventListener('click', function (e) {
+            e.stopPropagation();
+            invoke('bookmarks:toggle-quick', { id: b.id }).then(renderPanel);
+          });
+        }
+        if (quick.length) {
+          el('div', 'panel-group', body).textContent = 'Quick Access';
+          quick.forEach(function (b) { addRow(b, true); });
+          el('div', 'panel-group', body).textContent = 'All Favorites';
+        }
+        items.forEach(function (b) { addRow(b, false); });
         var add = el('a', null, foot);
         add.textContent = 'Add...';
         add.addEventListener('click', openAddFavorite);
