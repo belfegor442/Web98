@@ -106,11 +106,31 @@
     font-size: 11px;
   }
   .ticker span { display: inline-block; padding-left: 100%; animation: marquee 22s linear infinite; }
+  .ticker:hover span { animation-play-state: paused; }
   @keyframes marquee {
     0% { transform: translateX(0); }
     100% { transform: translateX(-100%); }
   }
   @media (prefers-reduced-motion: reduce) { .ticker span { animation: none; padding-left: 8px; } }
+
+  /* NEW! blinkie */
+  .new-tag {
+    display: inline-block;
+    background: #ff0000;
+    color: #ffff00;
+    font-size: 8px;
+    font-weight: bold;
+    padding: 0 3px;
+    margin-left: 4px;
+    vertical-align: middle;
+    border: 1px solid #800000;
+    animation: blink 1.2s step-start infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .new-tag { animation: none; } }
+
+  .greeting { color: #404040; font-size: 11px; margin: 0; }
+  .conn { color: #006000; font-size: 10px; margin-left: 4px; }
 
   /* ------- quick access (speed dial) ------- */
   .quick {
@@ -487,7 +507,8 @@
         <div class="logo" aria-hidden="true">W98</div>
         <div>
           <h1><span>Web</span>98</h1>
-          <p>The Web the way it was meant to be &mdash; on your desktop.</p>
+          <p class="greeting" id="greeting">The Web the way it was meant to be &mdash; on your desktop.</p>
+          <p class="conn" id="conn"></p>
         </div>
       </div>
     </div>
@@ -555,8 +576,8 @@
         <div class="box">
           <h2>What's New</h2>
           <ul>
-            <li><a href="https://theoldnet.com/">TheOldNet</a><small>Browse real archived 90s web pages in a period-correct browser</small></li>
-            <li><a href="https://www.digitalemulation.com/">Digital Emulation</a><small>Virtual machines and retro software in your browser</small></li>
+            <li><a href="https://theoldnet.com/">TheOldNet</a><span class="new-tag">NEW!</span><small>Browse real archived 90s web pages in a period-correct browser</small></li>
+            <li><a href="https://www.digitalemulation.com/">Digital Emulation</a><span class="new-tag">NEW!</span><small>Virtual machines and retro software in your browser</small></li>
             <li><a href="https://textfiles.com/">textfiles.com</a><small>Archive of BBS and pre-web era text files</small></li>
             <li><a href="https://www.16colo.rs/">16colo.rs</a><small>ASCII art and ANSI scene archive</small></li>
           </ul>
@@ -570,7 +591,7 @@
             <li><a href="https://wiby.me/">Wiby</a></li>
           </ul>
           <h3 style="margin-top:10px;">Search Engines</h3>
-          <ul>
+          <ul id="engine-list">
             <li><a href="https://lite.duckduckgo.com/lite/">DuckDuckGo Lite</a></li>
             <li><a href="https://search.marginalia.nu/">Marginalia</a></li>
             <li><a href="https://wiby.me/">Wiby (small web)</a></li>
@@ -802,6 +823,100 @@
     });
     loadEngine();
   }
+
+  /* -------- dynamic Search Engines side panel -------- */
+  function loadEnginePanel() {
+    var ul = document.getElementById('engine-list');
+    if (!ul || !api || typeof api.settings !== 'function') return;
+    api.settings().then(function (s) {
+      var engines = (s && s.engines) || [];
+      if (!engines.length) return;
+      ul.textContent = '';
+      engines.forEach(function (e) {
+        if (!e || !e.name) return;
+        var li = document.createElement('li');
+        var a = document.createElement('a');
+        a.href = '#';
+        a.textContent = e.name;
+        a.title = 'Use ' + e.name + ' for searches';
+        a.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          if (engineSel) engineSel.value = e.name;
+          if (api && typeof api.setSetting === 'function') {
+            api.setSetting({ searchEngine: e.name }).catch(function () {});
+          }
+          setStatus(e.name + ' set as search engine');
+          if (input) { input.focus(); input.select(); }
+        });
+        li.appendChild(a);
+        ul.appendChild(li);
+      });
+    }).catch(function () {});
+  }
+  loadEnginePanel();
+
+  /* -------- dynamic What's Cool (from favorites not in first 6) -------- */
+  function loadWhatsCool() {
+    if (!api || typeof api.list !== 'function') return;
+    api.list().then(function (rows) {
+      var all = (rows || []).filter(function (b) { return b.url; });
+      var cool = all.slice(6, 10);
+      if (!cool.length) return;
+      var ul = document.querySelector('.col:nth-child(2) ul');
+      if (!ul) return;
+      ul.textContent = '';
+      cool.forEach(function (b) {
+        var li = document.createElement('li');
+        var a = document.createElement('a');
+        a.href = '#';
+        a.textContent = b.name || hostOf(b.url);
+        a.addEventListener('click', function (e) {
+          e.preventDefault();
+          goUrl(b.url);
+        });
+        a.addEventListener('mouseenter', function () { setStatus(b.url); });
+        a.addEventListener('mouseleave', function () { setStatus('Done'); });
+        li.appendChild(a);
+        var sm = document.createElement('small');
+        sm.textContent = hostOf(b.url);
+        li.appendChild(sm);
+        ul.appendChild(li);
+      });
+    }).catch(function () {});
+  }
+  loadWhatsCool();
+
+  /* -------- keyboard: printable key focuses search -------- */
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key.length === 1 && /[a-z0-9]/i.test(e.key)) {
+      input.focus();
+    }
+  });
+
+  /* -------- greeting by time of day -------- */
+  (function () {
+    var el = document.getElementById('greeting');
+    if (!el) return;
+    var h = new Date().getHours();
+    var msg;
+    if (h < 6) msg = 'Burning the midnight oil?';
+    else if (h < 12) msg = 'Good morning — the Web awaits.';
+    else if (h < 18) msg = 'Good afternoon — surf on.';
+    else msg = 'Good evening — the night is young.';
+    el.textContent = msg;
+  })();
+
+  /* -------- connection status (retro flavor) -------- */
+  (function () {
+    var el = document.getElementById('conn');
+    if (!el) return;
+    var speeds = ['33.6', '56.0', '128.0', '256.0', '1500.0'];
+    var s = speeds[Math.floor(Math.random() * speeds.length)];
+    el.textContent = 'Connected at ' + s + ' Kbps';
+  })();
 
   /* -------- quick access (speed dial from Favorites) -------- */
   var quickSection = document.getElementById('quick');
