@@ -269,8 +269,9 @@
     flex-wrap: wrap;
   }
   .addr label { color: #404040; }
+  .addr .field { position: relative; flex: 1 1 260px; min-width: 220px; display: flex; }
   .addr input {
-    flex: 1; min-width: 220px;
+    flex: 1; width: 100%;
     font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
     font-size: 13px;
     padding: 4px 6px;
@@ -279,6 +280,61 @@
     border-left: 2px solid #404040;
     border-right: 2px solid #ffffff;
     border-bottom: 2px solid #ffffff;
+  }
+  .addr select {
+    font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+    font-size: 11px;
+    max-width: 130px;
+    background: #ffffff;
+    color: #000;
+    border-top: 2px solid #404040;
+    border-left: 2px solid #404040;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+    padding: 2px 2px;
+  }
+  .suggest {
+    position: absolute; left: 0; right: 0; top: 100%;
+    z-index: 40;
+    background: #ffffff;
+    border-top: 1px solid #808080;
+    border-left: 1px solid #808080;
+    border-right: 1px solid #ffffff;
+    border-bottom: 1px solid #ffffff;
+    box-shadow: 2px 2px 0 rgba(0,0,0,0.35);
+    max-height: 220px;
+    overflow-y: auto;
+    margin-top: 2px;
+  }
+  .suggest .sg-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 6px;
+    cursor: default;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .suggest .sg-row .sg-tag {
+    flex: 0 0 auto;
+    font-size: 9px;
+    font-weight: bold;
+    color: #ffffff;
+    background: #000080;
+    padding: 0 4px;
+    min-width: 42px;
+    text-align: center;
+  }
+  .suggest .sg-row.hi { background: #000080; color: #ffffff; }
+  .suggest .sg-row.hi .sg-url { color: #d0d0ff; }
+  .suggest .sg-row .sg-name {
+    flex: 0 1 auto;
+    max-width: 55%;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .suggest .sg-row .sg-url {
+    flex: 1 1 auto;
+    color: #606060;
+    font-size: 10px;
+    overflow: hidden; text-overflow: ellipsis;
   }
   .w98-btn {
     font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
@@ -349,6 +405,10 @@
     font-size: 12px; font-weight: bold; margin: 0 0 8px 0;
     background: #000080; color: #fff; padding: 3px 6px;
   }
+  .feature .box ul { list-style: disc; margin: 0; padding-left: 20px; }
+  .feature .box li { padding: 3px 0; }
+  .feature .box a { color: #0000ee; text-decoration: underline; cursor: pointer; }
+  .feature .box small { color: #606060; display: block; }
   .feature .side {
     flex: 1 1 200px;
     background: #c0c0c0;
@@ -434,7 +494,12 @@
     <div class="ticker" aria-hidden="true"><span>&#9733; Welcome to Web98 Home &#9733; A real browser engine with a classic desktop interface &#9733; Type a search or address above &#9733; Press Ctrl+L for the address bar, Ctrl+T for a new tab &#9733; Right-click to explore &#9733;</span></div>
     <form class="addr" id="searchform" role="search">
       <label for="q">Address</label>
-      <input type="search" name="q" id="q" placeholder="Search the Web or enter an address..." autocomplete="off" aria-label="Search the web or enter an address" />
+      <div class="field">
+        <input type="search" name="q" id="q" placeholder="Search the Web or enter an address..." autocomplete="off" spellcheck="false" aria-label="Search the web or enter an address" aria-autocomplete="list" aria-controls="suggest" />
+        <div class="suggest" id="suggest" role="listbox" aria-label="Suggestions" hidden></div>
+      </div>
+      <label for="engine" title="Search engine used by Go">Search</label>
+      <select id="engine" aria-label="Search engine"></select>
       <button class="w98-btn" type="submit">Go</button>
       <button class="w98-btn" type="button" id="lucky">Open</button>
     </form>
@@ -514,9 +579,11 @@
       </div>
 
       <div class="tips">
-        <b>Tip:</b> Press <b>Ctrl+L</b> to jump to the address bar, <b>Ctrl+T</b> for a new tab,
-        <b>Ctrl+D</b> to add the current page to Favorites. Try typing a search term directly
-        into the address bar and press Enter.
+        <b>Tip:</b> <span id="tip-text">Press <b>Ctrl+L</b> to jump to the address bar.</span>
+        <span id="tip-nav" style="float:right; margin-left:12px;">
+          <button type="button" class="w98-btn" id="tip-prev" style="min-width:24px; padding:0 6px;">&#9664;</button>
+          <button type="button" class="w98-btn" id="tip-next" style="min-width:24px; padding:0 6px;">&#9654;</button>
+        </span>
       </div>
     </div>
 
@@ -559,9 +626,19 @@
       window.location.href = url;
     }
   }
+  function looksLikeUrl(s) {
+    return /^(https?:\/\/|www\.)/i.test(s) ||
+           /^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(s);
+  }
   function search() {
     var query = input.value.trim();
     if (!query) { input.focus(); setStatus('Type a search or address first.'); return; }
+    hideSuggest();
+    if (looksLikeUrl(query)) {
+      var url = /^https?:\/\//i.test(query) ? query : 'http://' + query;
+      goUrl(url);
+      return;
+    }
     setStatus('Opening "' + query + '"...');
     if (api && typeof api.action === 'function') {
       api.action('search', query).catch(function () {
@@ -586,8 +663,145 @@
     a.addEventListener('mouseenter', function () { setStatus(a.href); });
     a.addEventListener('mouseleave', function () { setStatus('Done'); });
   });
-  input.addEventListener('keydown', function (event) { if (event.key === 'Escape') input.value = ''; });
   input.focus({ preventScroll: true });
+
+  /* -------- address-bar suggestions (omni:suggest) -------- */
+  var suggestBox = document.getElementById('suggest');
+  var sugItems = [];
+  var sugHi = -1;
+  var sugTimer = 0;
+
+  function hideSuggest() {
+    if (suggestBox) { suggestBox.hidden = true; suggestBox.textContent = ''; }
+    sugItems = [];
+    sugHi = -1;
+    if (input) input.removeAttribute('aria-activedescendant');
+  }
+  function markHi(i) {
+    if (!suggestBox) return;
+    var rows = suggestBox.children;
+    for (var k = 0; k < rows.length; k++) rows[k].classList.toggle('hi', k === i);
+    sugHi = i;
+    if (i >= 0 && rows[i]) input.setAttribute('aria-activedescendant', 'sg-' + i);
+    else input.removeAttribute('aria-activedescendant');
+    if (rows[i] && rows[i].scrollIntoView) rows[i].scrollIntoView({ block: 'nearest' });
+  }
+  function applySug(it) {
+    if (!it) return;
+    hideSuggest();
+    if (looksLikeUrl(it.url)) goUrl(it.url);
+    else {
+      input.value = it.title || it.url;
+      search();
+    }
+  }
+  function renderSuggest(rows) {
+    if (!suggestBox) return;
+    sugItems = rows || [];
+    suggestBox.textContent = '';
+    if (!sugItems.length) { suggestBox.hidden = true; return; }
+    sugItems.forEach(function (it, i) {
+      var row = document.createElement('div');
+      row.className = 'sg-row';
+      row.id = 'sg-' + i;
+      row.setAttribute('role', 'option');
+      row.tabIndex = -1;
+      var tag = document.createElement('span');
+      tag.className = 'sg-tag';
+      tag.textContent = it.type === 'bookmark' ? 'FAV' : 'HIST';
+      var name = document.createElement('span');
+      name.className = 'sg-name';
+      name.textContent = it.title || it.url;
+      var url = document.createElement('span');
+      url.className = 'sg-url';
+      url.textContent = it.url;
+      row.appendChild(tag);
+      row.appendChild(name);
+      row.appendChild(url);
+      row.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        applySug(it);
+      });
+      row.addEventListener('mouseenter', function () { markHi(i); setStatus(it.url); });
+      row.addEventListener('mouseleave', function () { setStatus('Done'); });
+      suggestBox.appendChild(row);
+    });
+    suggestBox.hidden = false;
+    markHi(-1);
+  }
+  function fetchSuggest() {
+    if (!api || typeof api.suggest !== 'function') return;
+    var q = input.value.trim();
+    if (q.length < 1) { hideSuggest(); return; }
+    api.suggest(q).then(function (rows) {
+      if (input.value.trim() !== q) return;
+      renderSuggest(rows);
+    }).catch(function () { hideSuggest(); });
+  }
+  input.addEventListener('input', function () {
+    if (sugTimer) clearTimeout(sugTimer);
+    sugTimer = setTimeout(fetchSuggest, 120);
+  });
+  input.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      if (suggestBox && !suggestBox.hidden) { hideSuggest(); event.preventDefault(); return; }
+      input.value = '';
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (suggestBox && !suggestBox.hidden && sugItems.length) {
+        event.preventDefault();
+        var next = sugHi + (event.key === 'ArrowDown' ? 1 : -1);
+        if (next < 0) next = sugItems.length - 1;
+        if (next >= sugItems.length) next = 0;
+        markHi(next);
+      }
+      return;
+    }
+    if (event.key === 'Enter' && suggestBox && !suggestBox.hidden && sugHi >= 0) {
+      event.preventDefault();
+      applySug(sugItems[sugHi]);
+      return;
+    }
+    if (event.key === 'Tab') hideSuggest();
+  });
+  input.addEventListener('blur', function () { setTimeout(hideSuggest, 120); });
+  input.addEventListener('focus', function () {
+    if (input.value.trim().length >= 1) fetchSuggest();
+  });
+
+  /* -------- search engine selector (settings) -------- */
+  var engineSel = document.getElementById('engine');
+  function loadEngine() {
+    if (!engineSel || !api || typeof api.settings !== 'function') return;
+    api.settings().then(function (s) {
+      var engines = (s && s.engines) || [];
+      var cur = (s && s.searchEngine) || '';
+      engineSel.textContent = '';
+      engines.forEach(function (e) {
+        if (!e || !e.name) return;
+        var o = document.createElement('option');
+        o.value = e.name;
+        o.textContent = e.name;
+        if (e.name === cur) o.selected = true;
+        engineSel.appendChild(o);
+      });
+      if (!engineSel.options.length) {
+        var o = document.createElement('option');
+        o.value = 'DuckDuckGo';
+        o.textContent = 'DuckDuckGo';
+        engineSel.appendChild(o);
+      }
+    }).catch(function () {});
+  }
+  if (engineSel) {
+    engineSel.addEventListener('change', function () {
+      if (!api || typeof api.setSetting !== 'function') return;
+      setStatus('Search engine: ' + engineSel.value);
+      api.setSetting({ searchEngine: engineSel.value }).catch(function () {});
+    });
+    loadEngine();
+  }
 
   /* -------- quick access (speed dial from Favorites) -------- */
   var quickSection = document.getElementById('quick');
@@ -767,16 +981,47 @@
   loadRecent();
   loadHits();
 
+  /* -------- rotating tips -------- */
+  var TIPS = [
+    'Press <b>Ctrl+L</b> to jump to the address bar, <b>Ctrl+T</b> for a new tab.',
+    'Type a search term directly into the address bar and press <b>Enter</b>.',
+    'Press <b>Ctrl+D</b> to add the current page to Favorites.',
+    'Hover a link to see its address in the status bar below.',
+    'Right-click a page for the classic context menu (Cut / Copy / Paste / Print).',
+    'Star a favorite in the Favorites panel to pin it to Quick Access.',
+    'Use the <b>Search</b> menu above to switch between DuckDuckGo, Google, Bing or Wikipedia.',
+    'Open <b>History</b> (or <b>Ctrl+H</b>) to reopen recent pages.'
+  ];
+  var tipText = document.getElementById('tip-text');
+  var tipIdx = 0;
+  function showTip(i) {
+    if (!tipText) return;
+    tipIdx = (i + TIPS.length) % TIPS.length;
+    tipText.innerHTML = TIPS[tipIdx];
+  }
+  var tipPrev = document.getElementById('tip-prev');
+  var tipNext = document.getElementById('tip-next');
+  if (tipPrev) tipPrev.addEventListener('click', function () { showTip(tipIdx - 1); });
+  if (tipNext) tipNext.addEventListener('click', function () { showTip(tipIdx + 1); });
+  showTip(0);
+  setInterval(function () { showTip(tipIdx + 1); }, 8000);
+
+  /* -------- clock with date + AM/PM -------- */
   var clock = document.getElementById('clock');
   function tick() {
     if (!clock) return;
     var d = new Date();
-    var h = d.getHours() % 12; if (h === 0) h = 12;
+    var h = d.getHours();
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12; if (h === 0) h = 12;
     var m = d.getMinutes(); if (m < 10) m = '0' + m;
-    clock.textContent = h + ':' + m;
+    clock.textContent = h + ':' + m + ' ' + ampm;
+    clock.title = d.toLocaleDateString(undefined, {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    }) + ' — Web98 Home';
   }
   tick();
-  setInterval(tick, 30000);
+  setInterval(tick, 15000);
 })();
 </script>
 </body>

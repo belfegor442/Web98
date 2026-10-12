@@ -228,6 +228,16 @@ std::string buildShim(const char* kind) {
       },
       toggleQuick: function (id) {
         return api.invoke('bookmarks:toggle-quick', { id: Number(id) || 0 });
+      },
+      suggest: function (q) {
+        return api.invoke('omni:suggest', { q: String(q || '') });
+      },
+      settings: function () {
+        return api.invoke('settings:get', null);
+      },
+      setSetting: function (patch) {
+        return api.invoke('settings:set',
+          patch && typeof patch === 'object' ? patch : {});
       }
     };
   } else if (kind === 'error') {
