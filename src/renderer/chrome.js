@@ -66,7 +66,12 @@
     var w = Math.round(r.width);
     var h = Math.round(r.height);
     var hide = false;
-    if (activeFloat) {
+    if (ctxActive) {
+      // Context menu: fully hide the tab HWND and rely on the frozen
+      // snapshot painted on the ghost. Shrinking instead would show the live
+      // tab (shifted down) AND the snapshot at once — duplicated content.
+      hide = true;
+    } else if (activeFloat) {
       var f = activeFloat.getBoundingClientRect();
       var overlap = Math.ceil(f.bottom) - y;
       if (overlap > 0) {
