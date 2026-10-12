@@ -4,9 +4,25 @@
 <meta charset="utf-8" />
 <title>The page cannot be displayed</title>
 <style>
+  @font-face {
+    font-family: 'Pixelated MS Sans Serif';
+    font-style: normal;
+    font-weight: 400;
+    src:
+      url('../../assets/ie5/fonts/ms_sans_serif.woff2') format('woff2'),
+      url('../../assets/ie5/fonts/ms_sans_serif.woff') format('woff');
+  }
+  @font-face {
+    font-family: 'Pixelated MS Sans Serif';
+    font-style: normal;
+    font-weight: 700;
+    src:
+      url('../../assets/ie5/fonts/ms_sans_serif_bold.woff2') format('woff2'),
+      url('../../assets/ie5/fonts/ms_sans_serif_bold.woff') format('woff');
+  }
   html, body { margin: 0; padding: 0; }
   body {
-    font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+    font-family: 'Pixelated MS Sans Serif', Verdana, Geneva, sans-serif;
     font-size: 11px;
     background: #ffffff;
     color: #000000;
@@ -38,7 +54,7 @@
   }
   .buttons { margin-top: 18px; }
   .w98-btn {
-    font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+    font-family: inherit;
     font-size: 11px;
     min-width: 75px;
     padding: 3px 12px;

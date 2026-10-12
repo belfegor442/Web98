@@ -31,7 +31,7 @@ body { margin: 0; overflow: hidden; }
 
 /* --- widgets --------------------------------------------------------------- */
 .w98-btn {
-  font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+  font-family: inherit;
   font-size: 11px;
   min-width: 75px;
   height: 23px;
@@ -59,7 +59,7 @@ body { margin: 0; overflow: hidden; }
 .w98-input,
 .w98-select,
 .w98-textarea {
-  font-family: "MS Sans Serif", Tahoma, Arial, sans-serif;
+  font-family: inherit;
   font-size: 11px;
   background: #fff;
   color: #000;

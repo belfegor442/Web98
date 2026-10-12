@@ -40,7 +40,7 @@
 }
 
 body {
-  font-family: Verdana, Geneva, Tahoma, sans-serif;
+  font-family: 'Pixelated MS Sans Serif', Verdana, Geneva, sans-serif;
   font-size: 11px;
   color: #222;
   background: #c0c0c0;
@@ -252,7 +252,7 @@ body {
 /* Menu-bar text and toolbar captions must render at exactly the same size. */
 .ow-menubar .ow-menu__label,
 .ow-toolbar .ow-btn__label {
-  font-family: Verdana, Geneva, Tahoma, sans-serif;
+  font-family: inherit;
   font-size: 11px;
   line-height: 14px;
 }
