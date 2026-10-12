@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include "app_core.h"
 #include "base.h"
@@ -13,6 +15,15 @@
 #include "security.h"
 #include "settings.h"
 #include "window.h"
+
+// gdiplus last: it needs windows.h (already pulled in) and must not clobber
+// min/max macros used by headers above.
+#pragma warning(push, 0)
+#undef min
+#undef max
+#include <objidl.h>
+#include <gdiplus.h>
+#pragma warning(pop)
 
 namespace web98 {
 namespace {
@@ -58,6 +69,113 @@ std::string originOf(const std::string& url) {
   size_t start = url.rfind('/', scheme + 3);
   std::string origin = start == std::string::npos ? url : url.substr(0, start);
   return origin;
+}
+
+std::string base64Encode(const unsigned char* data, size_t len) {
+  static const char tbl[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  out.reserve(((len + 2) / 3) * 4);
+  size_t i = 0;
+  while (i + 2 < len) {
+    unsigned n = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+    out += tbl[(n >> 18) & 63];
+    out += tbl[(n >> 12) & 63];
+    out += tbl[(n >> 6) & 63];
+    out += tbl[n & 63];
+    i += 3;
+  }
+  if (i < len) {
+    unsigned n = static_cast<unsigned>(data[i]) << 16;
+    out += tbl[(n >> 18) & 63];
+    if (i + 1 < len) {
+      n |= static_cast<unsigned>(data[i + 1]) << 8;
+      out += tbl[(n >> 12) & 63];
+      out += tbl[(n >> 6) & 63];
+      out += '=';
+    } else {
+      out += tbl[(n >> 12) & 63];
+      out += "==";
+    }
+  }
+  return out;
+}
+
+CLSID pngEncoderClsid() {
+  CLSID id = {};
+  UINT num = 0, size = 0;
+  if (Gdiplus::GetImageEncodersSize(&num, &size) != Gdiplus::Ok || !size)
+    return id;
+  std::vector<unsigned char> buf(size);
+  auto* info = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
+  if (Gdiplus::GetImageEncoders(num, size, info) != Gdiplus::Ok) return id;
+  for (UINT i = 0; i < num; ++i) {
+    if (info[i].MimeType && wcscmp(info[i].MimeType, L"image/png") == 0)
+      return info[i].Clsid;
+  }
+  return id;
+}
+
+// Freeze `hwnd` into a PNG data URL via PrintWindow + GDI+. Returns empty
+// string on any failure (caller falls back to no snapshot / white ghost).
+// The context menu is HTML inside the chrome page, which sits BELOW the tab
+// HWND; to reveal it the tab is hidden, so we paint this frozen snapshot on
+// the ghost behind the menu instead of exposing the white background.
+std::string captureHwndPngDataUrl(HWND hwnd) {
+  if (!hwnd || !::IsWindow(hwnd)) return std::string();
+  RECT rc;
+  if (!::GetClientRect(hwnd, &rc)) return std::string();
+  int w = rc.right - rc.left;
+  int h = rc.bottom - rc.top;
+  if (w <= 0 || h <= 0 || w > 16384 || h > 16384) return std::string();
+
+  HDC screen = ::GetDC(nullptr);
+  if (!screen) return std::string();
+  HDC mem = ::CreateCompatibleDC(screen);
+  HBITMAP bmp = ::CreateCompatibleBitmap(screen, w, h);
+  HGDIOBJ old = bmp ? ::SelectObject(mem, bmp) : nullptr;
+  BOOL ok = old && ::PrintWindow(hwnd, mem, 2 /* PW_RENDERFULLCONTENT */);
+  if (old) ::SelectObject(mem, old);
+  ::ReleaseDC(nullptr, screen);
+  ::DeleteDC(mem);
+  if (!ok || !bmp) {
+    if (bmp) ::DeleteObject(bmp);
+    return std::string();
+  }
+
+  static ULONG_PTR s_token = 0;
+  static bool s_initTried = false;
+  if (!s_initTried) {
+    s_initTried = true;
+    Gdiplus::GdiplusStartupInput input;
+    if (Gdiplus::GdiplusStartup(&s_token, &input, nullptr) != Gdiplus::Ok)
+      s_token = 0;
+  }
+
+  std::string url;
+  if (s_token) {
+    Gdiplus::Bitmap src(bmp, nullptr);
+    IStream* stream = nullptr;
+    if (::CreateStreamOnHGlobal(nullptr, TRUE, &stream) == S_OK && stream) {
+      CLSID pngId = pngEncoderClsid();
+      if (src.Save(stream, &pngId, nullptr) == Gdiplus::Ok) {
+        HGLOBAL hg = nullptr;
+        if (::GetHGlobalFromStream(stream, &hg) == S_OK && hg) {
+          SIZE_T sz = ::GlobalSize(hg);
+          const char* p = static_cast<const char*>(::GlobalLock(hg));
+          if (p && sz > 0) {
+            url = "data:image/png;base64,";
+            url += base64Encode(reinterpret_cast<const unsigned char*>(p),
+                                sz);
+          }
+          if (p) ::GlobalUnlock(hg);
+        }
+      }
+      stream->Release();
+    }
+  }
+  ::DeleteObject(bmp);
+  return url;
 }
 
 }  // namespace
@@ -163,8 +281,8 @@ bool Web98Client::RunContextMenu(CefRefPtr<CefBrowser> browser,
   // Convert to screen physical pixels, then to chrome-page CSS via DPR.
   int cefX = params->GetXCoord();
   int cefY = params->GetYCoord();
+  HWND tabHwnd = nullptr;
   {
-    HWND tabHwnd = nullptr;
     if (tab->client && tab->client->browser()) {
       auto host = tab->client->browser()->GetHost();
       if (host) tabHwnd = host->GetWindowHandle();
@@ -185,6 +303,13 @@ bool Web98Client::RunContextMenu(CefRefPtr<CefBrowser> browser,
       cefX = pt.x;
       cefY = pt.y;
     }
+  }
+  // Freeze the tab's current pixels so the chrome page's content-ghost can
+  // show them behind the menu once the tab HWND is hidden (the menu is HTML
+  // inside the chrome page, which sits below the tab HWND).
+  if (tabHwnd) {
+    std::string bg = captureHwndPngDataUrl(tabHwnd);
+    if (!bg.empty()) menu.obj.emplace_back("bg", Json::makeString(bg));
   }
   menu.obj.emplace_back("x", Json::makeNumber(cefX));
   menu.obj.emplace_back("y", Json::makeNumber(cefY));

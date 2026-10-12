@@ -660,6 +660,7 @@
 
   /* --------------------------- context menu -------------------------------- */
   var ctxActive = false;
+  var ctxGhostSnap = false;
 
   api.on('ctx', function (data) {
     // Native sends physical pixels relative to the chrome client area.
@@ -667,6 +668,16 @@
     var dpr = window.devicePixelRatio || 1;
     var x = data.x / dpr;
     var y = data.y / dpr;
+    // Native freezes the tab HWND (PrintWindow) before hiding it to reveal
+    // this menu; paint that snapshot on the ghost so no white shows through.
+    if (data.bg) {
+      var ghost = $('content-ghost');
+      if (ghost) {
+        ghost.style.backgroundImage = 'url("' + data.bg + '")';
+        ghost.style.backgroundSize = '100% 100%';
+        ctxGhostSnap = true;
+      }
+    }
     var items = (data.items || []).map(function (i) {
       if (i.sep) return { sep: true };
       return {
@@ -713,6 +724,18 @@
     $('ctxlayer').style.pointerEvents = 'none';
     activeFloat = null;
     pushBounds();
+    // Clear the snapshot only after the native side has restored the tab
+    // HWND (chrome:bounds IPC + MoveWindow), otherwise the white
+    // content-ghost flashes for a frame.
+    setTimeout(clearCtxGhost, 200);
+  }
+  function clearCtxGhost() {
+    if (ctxActive || !ctxGhostSnap) return;
+    ctxGhostSnap = false;
+    var ghost = $('content-ghost');
+    if (!ghost) return;
+    ghost.style.backgroundImage = '';
+    ghost.style.backgroundSize = '';
   }
   $('ctxlayer').addEventListener('mousedown', function (e) {
     if (e.target === $('ctxlayer')) disposeCtx();

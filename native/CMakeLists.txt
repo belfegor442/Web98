@@ -128,7 +128,7 @@ add_dependencies(${CEF_TARGET} libcef_dll_wrapper sqlite3)
 # CEF_STANDARD_LIBS lacks shell32/ole32 (SHGetKnownFolderPath in base.cpp)
 # and psapi (GetProcessMemoryInfo in app_core.cpp).
 target_link_libraries(${CEF_TARGET} libcef_lib libcef_dll_wrapper sqlite3
-  shell32 ole32 psapi ${CEF_STANDARD_LIBS})
+  shell32 ole32 psapi gdiplus ${CEF_STANDARD_LIBS})
 
 # Local pages (renderer) + assets, mirroring the repo layout so the
 # ../../assets and ../../css references inside the pages keep working:
