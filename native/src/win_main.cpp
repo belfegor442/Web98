@@ -37,14 +37,16 @@ int runBrowser(HINSTANCE instance, LPWSTR cmd_line, int show_cmd,
                void* sandbox_info, bool sandboxed) {
   (void)show_cmd;
   (void)cmd_line;
-  if (!acquireSingleInstance()) return 0;
-
   CefMainArgs main_args(instance);
   // Subprocesses (renderer/gpu/utility) re-enter through CefExecuteProcess.
   // They need the same CefApp so the render process gets the V8 bridge.
   CefRefPtr<Web98App> app = new Web98App();
   int code = CefExecuteProcess(main_args, app.get(), sandbox_info);
   if (code >= 0) return code;
+
+  // Only the browser's main process owns the single-instance mutex. CEF
+  // renderer/GPU/utility subprocesses must reach CefExecuteProcess first.
+  if (!acquireSingleInstance()) return 0;
 
   if (!AppCore::get().init()) return 1;
 
