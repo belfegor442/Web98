@@ -1150,7 +1150,12 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
     size_t cut = current.find_first_of("?#");
     if (cut != std::string::npos) current.resize(cut);
     if (current != errorPageUrl()) return;
-    certs_.grant(url);
+    const int browserId =
+        tab->client && tab->client->browser()
+            ? tab->client->browser()->GetIdentifier()
+            : -1;
+    if (browserId < 0) return;
+    certs_.grant(std::to_string(browserId) + "|" + url);
     tab->error = Json::makeNull();
     tab->errorPageShown = false;
     tab->expectedNav = url;
