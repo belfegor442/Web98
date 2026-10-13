@@ -168,7 +168,9 @@ struct Parser {
       if (p >= end || !(*p >= '0' && *p <= '9')) return false;
       while (p < end && *p >= '0' && *p <= '9') ++p;
     }
-    out = Json::makeNumber(std::strtod(std::string(start, p).c_str(), nullptr));
+    double parsed = std::strtod(std::string(start, p).c_str(), nullptr);
+    if (!std::isfinite(parsed)) return false;
+    out = Json::makeNumber(parsed);
     return true;
   }
 };
@@ -200,7 +202,7 @@ void dumpString(const std::string& s, std::string& out) {
 
 void dumpNumber(double v, std::string& out) {
   if (!std::isfinite(v)) { out += "null"; return; }
-  if (v == static_cast<long long>(v) && std::fabs(v) < 1e15) {
+  if (std::fabs(v) < 1e15 && std::trunc(v) == v) {
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(v));
     out += buf;
