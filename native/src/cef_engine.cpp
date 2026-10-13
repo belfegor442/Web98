@@ -322,7 +322,9 @@ void TabManager::OnLoadingStateChange(Tab* tab, bool isLoading, bool,
   if (isLoading) {
     tab->progress = 0.05;
     tab->progressBucket = -1;
-    tab->error = Json::makeNull();
+    // Keep tab->error while the error page is loading so the "Continue
+    // anyway" button can read it. Clear it only for normal navigations.
+    if (!tab->errorPageShown) tab->error = Json::makeNull();
     emitTabs();
     navState(tab);
     return;
@@ -347,8 +349,15 @@ void TabManager::OnAddressChange(Tab* tab, const std::string& url) {
   if (!tab) return;
   if (tab->errorPageShown) {
     // Internal error page load: keep the failed URL visible in the UI.
-    tab->errorPageShown = false;
-    return;
+    // If this is NOT the error page (load failed / user navigated), clear
+    // the flag so future errors are not swallowed by showError's guard.
+    if (url.empty() || url.compare(0, errorPageUrl().size(),
+                                   errorPageUrl()) != 0) {
+      tab->errorPageShown = false;
+      tab->error = Json::makeNull();
+    } else {
+      return;
+    }
   }
   tab->url = url;
   tab->error = Json::makeNull();
@@ -387,6 +396,13 @@ void TabManager::OnLoadError(Tab* tab, int code, const std::string& desc,
     flushJobId_ = 0;
     ++flushToken_;
     scheduleFlush(200);
+  }
+  // If the error page itself failed to load, clear the guard so the next
+  // error is not swallowed by showError's errorPageShown check.
+  if (tab && tab->errorPageShown) {
+    const std::string ep = errorPageUrl();
+    if (url.empty() || url.compare(0, ep.size(), ep) != 0)
+      tab->errorPageShown = false;
   }
   showError(tab, code, desc, url);
 }

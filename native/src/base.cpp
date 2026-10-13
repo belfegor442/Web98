@@ -188,12 +188,18 @@ std::string pathToFileUrl(const std::string& path) {
     if (c == '\\') c = '/';
   std::string enc;
   for (unsigned char c : norm) {
-    if (c == ' ' || c == '#' || c == '?' || c == '%' || c == '"') {
+    // Keep unreserved characters, '/', and ':' (drive letter) literal.
+    // Everything else — including non-ASCII bytes and reserved chars like
+    // < > ` { } | ^ [ ] — must be percent-encoded or CEF mis-parses the URL.
+    bool safe = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                (c >= '0' && c <= '9') || c == '/' || c == ':' || c == '-' ||
+                c == '.' || c == '_' || c == '~';
+    if (safe) {
+      enc += static_cast<char>(c);
+    } else {
       char b[4];
       std::snprintf(b, sizeof(b), "%%%02X", c);
       enc += b;
-    } else {
-      enc += static_cast<char>(c);
     }
   }
   if (enc.rfind("/", 0) == 0) enc = "/" + enc;  // keep leading slash

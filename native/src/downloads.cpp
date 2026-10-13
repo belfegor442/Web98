@@ -144,6 +144,12 @@ std::string Downloads::PathFor(int id) const {
   return std::string();
 }
 
+std::string Downloads::StateFor(int id) const {
+  for (const auto& r : items_)
+    if (r.id == id) return r.state;
+  return std::string();
+}
+
 int Downloads::ActiveCount() const {
   int n = 0;
   for (const auto& r : items_)

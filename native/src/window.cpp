@@ -185,6 +185,10 @@ bool MainWindow::create(const SessionWindow* session, bool show) {
   if (!CefBrowserHost::CreateBrowser(wi, chromeClient_, url, settings, nullptr,
                                      nullptr)) {
     chromeClient_ = nullptr;
+    // Destroy the orphan HWND so GWLP_USERDATA does not dangle.
+    HWND orphan = hwnd_;
+    hwnd_ = nullptr;
+    if (orphan) ::DestroyWindow(orphan);
     return false;
   }
   return true;
@@ -511,6 +515,10 @@ bool DialogWindow::create(MainWindow* parent, const std::string& page,
   settings.background_color = CefColorSetARGB(255, 0xc0, 0xc0, 0xc0);
   if (!CefBrowserHost::CreateBrowser(wi, client_, url, settings, nullptr, nullptr)) {
     client_ = nullptr;
+    // Destroy the orphan HWND so GWLP_USERDATA does not dangle.
+    HWND orphan = hwnd_;
+    hwnd_ = nullptr;
+    if (orphan) ::DestroyWindow(orphan);
     return false;
   }
   return true;

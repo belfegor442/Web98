@@ -145,13 +145,13 @@ void AppCore::createInitialWindows() {
   if (restore.empty()) {
     mainWindows_.push_back(std::make_unique<MainWindow>());
     MainWindow* w = mainWindows_.back().get();
-    w->create(nullptr, true);
+    if (!w->create(nullptr, true)) mainWindows_.pop_back();
     return;
   }
   for (const auto& sw : restore) {
     mainWindows_.push_back(std::make_unique<MainWindow>());
     MainWindow* w = mainWindows_.back().get();
-    w->create(&sw, true);
+    if (!w->create(&sw, true)) mainWindows_.pop_back();
   }
 }
 
@@ -353,7 +353,10 @@ void AppCore::setGrant(const std::string& origin, const std::string& permission,
 MainWindow* AppCore::createMainWindow(bool show) {
   mainWindows_.push_back(std::make_unique<MainWindow>());
   MainWindow* w = mainWindows_.back().get();
-  w->create(nullptr, show);
+  if (!w->create(nullptr, show)) {
+    mainWindows_.pop_back();
+    return nullptr;
+  }
   return w;
 }
 
@@ -586,7 +589,19 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
       CefRefPtr<CefBrowser> br = tab->client->browser();
       if (channel == "nav:back" && br->CanGoBack()) br->GoBack();
       else if (channel == "nav:forward" && br->CanGoForward()) br->GoForward();
-      else if (channel == "nav:reload") br->Reload();
+      else if (channel == "nav:reload") {
+        // After a load error the browser is on the internal error page;
+        // reloading it would just re-show the same error. Reload the
+        // failed URL instead.
+        if (tab->error.isObject()) {
+          std::string failed = tab->url;
+          tab->error = Json::makeNull();
+          tab->errorPageShown = false;
+          if (!failed.empty()) t->load(tab, failed);
+        } else {
+          br->Reload();
+        }
+      }
       else if (channel == "nav:stop") br->StopLoad();
       else if (channel == "nav:home")
         t->load(tab, settings_.getString("homepage", homepageUrl()));
@@ -1143,13 +1158,6 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
     const Json* kind = tab->error.find("kind");
     if (!kind || kind->stringOr("") != "cert") return;
     if (tab->url != url) return;
-    std::string current =
-        tab->client && tab->client->browser() && tab->client->browser()->GetMainFrame()
-            ? tab->client->browser()->GetMainFrame()->GetURL().ToString()
-            : std::string();
-    size_t cut = current.find_first_of("?#");
-    if (cut != std::string::npos) current.resize(cut);
-    if (current != errorPageUrl()) return;
     const int browserId =
         tab->client && tab->client->browser()
             ? tab->client->browser()->GetIdentifier()
@@ -1258,8 +1266,16 @@ void AppCore::updateCefDownload(CefRefPtr<CefDownloadItem> item,
 }
 
 void AppCore::confirmDangerousDownload(int id) {
-  std::string p = downloads_.PathFor(id);
+  // Only completed downloads can be opened; anything still in flight or
+  // cancelled must not be launched.
+  std::string st = downloads_.StateFor(id);
   Json o = Json::makeObject();
+  if (st != "completed") {
+    o.obj.emplace_back("ok", Json::makeBool(false));
+    o.obj.emplace_back("error", Json::makeString("Download is not complete"));
+    return;
+  }
+  std::string p = downloads_.PathFor(id);
   if (p.empty() || !fileExists(p)) {
     o.obj.emplace_back("ok", Json::makeBool(false));
     o.obj.emplace_back("error", Json::makeString("File no longer exists"));

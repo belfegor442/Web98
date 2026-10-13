@@ -482,11 +482,14 @@ void viewSourceAsync(const CommandCtx& ctx) {
   if (!b || !b->GetMainFrame()) return;
   std::string url = tab->url;
   MainWindow* win = ctx.win;
-  b->GetMainFrame()->GetSource(new StringSink([win, url](const CefString& s) {
+  std::weak_ptr<int> weak = win ? win->weakAlive() : std::weak_ptr<int>();
+  b->GetMainFrame()->GetSource(new StringSink([weak, url](const CefString& s) {
+    // Skip if the source window was destroyed while the source was loading.
+    if (weak.expired()) return;
     Json payload = Json::makeObject();
     payload.obj.emplace_back("html", Json::makeString(s.ToString()));
     payload.obj.emplace_back("url", Json::makeString(url));
-    AppCore::get().openDialog("source", win, &payload);
+    AppCore::get().openDialog("source", nullptr, &payload);
   }));
 }
 

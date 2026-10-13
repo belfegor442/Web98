@@ -49,6 +49,9 @@ class MainWindow {
   // Called from Web98Client::OnAfterCreated (kChrome role).
   void attachChrome(CefRefPtr<CefBrowser> browser);
 
+  // Weak token for async callbacks that must not outlive this window.
+  std::weak_ptr<int> weakAlive() const { return alive_; }
+
   static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
  private:
@@ -64,6 +67,7 @@ class MainWindow {
   bool chromeLoaded_ = false;
   bool fullscreen_ = false;
   RECT restoreBounds_ = {0, 0, 0, 0};
+  std::shared_ptr<int> alive_ = std::make_shared<int>(0);
 };
 
 class DialogWindow {

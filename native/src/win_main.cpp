@@ -48,7 +48,13 @@ int runBrowser(HINSTANCE instance, LPWSTR cmd_line, int show_cmd,
   // renderer/GPU/utility subprocesses must reach CefExecuteProcess first.
   if (!acquireSingleInstance()) return 0;
 
-  if (!AppCore::get().init()) return 1;
+  // Shell APIs (SHGetKnownFolderPath, ShellExecute) and CEF require COM.
+  ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+  if (!AppCore::get().init()) {
+    ::CoUninitialize();
+    return 1;
+  }
 
   CefSettings settings;
   // Sandbox off: the sandbox bootstrap intercepts renderer/GPU subprocess
@@ -64,12 +70,14 @@ int runBrowser(HINSTANCE instance, LPWSTR cmd_line, int show_cmd,
 
   if (!CefInitialize(main_args, settings, app.get(), sandbox_info)) {
     AppCore::get().shutdown();
+    ::CoUninitialize();
     return CefGetExitCode();
   }
   // Initial windows are created from Web98App::OnContextInitialized.
   CefRunMessageLoop();
   AppCore::get().shutdown();
   CefShutdown();
+  ::CoUninitialize();
   return 0;
 }
 

@@ -12,7 +12,10 @@ namespace {
 constexpr int64_t kCertGrantTtlMs = 5 * 60 * 1000;
 
 bool certErrorDesc(const std::string& desc) {
-  static const std::regex re("ERR_CERT|ERR_SSL|ERR_BAD_SSL", std::regex_constants::icase);
+  // Only certificate errors get the "Continue anyway" affordance. SSL
+  // protocol errors (ERR_SSL_VERSION_OR_CIPHER_MISMATCH etc.) are not
+  // bypassable and must stay classified as generic network failures.
+  static const std::regex re("ERR_CERT", std::regex_constants::icase);
   return std::regex_search(desc, re);
 }
 }  // namespace
