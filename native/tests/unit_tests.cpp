@@ -90,6 +90,7 @@ void runJson() {
   CHECK(n, Json::parse("\"hi\"", bad) && bad.str == "hi");
   CHECK(n, Json::parse("true", bad) && bad.b);
   CHECK(n, Json::parse("-3.5e2", bad) && bad.num == -350);
+  CHECK(n, !Json::parse("1e9999", bad));
 
   // Escape round-trip.
   Json s = Json::makeString("line\n\"q\"\t\\");
@@ -258,6 +259,26 @@ void runSettings() {
   // Model's engines include builtins after initEmpty.
   Json eng = m.get("engines");
   CHECK(n, eng.isArray() && !eng.arr.empty());
+
+  Json customEngines = Json::makeArray();
+  Json custom = Json::makeObject();
+  custom.obj.emplace_back("name", Json::makeString("Example Search"));
+  custom.obj.emplace_back("template",
+                          Json::makeString("https://search.example/?q=%s"));
+  customEngines.arr.push_back(custom);
+  Json enginePatch = Json::makeObject();
+  enginePatch.obj.emplace_back("engines", customEngines);
+  CHECK(n, m.applyPatch(enginePatch).empty());
+  eng = m.get("engines");
+  bool hasBuiltin = false, hasCustom = false;
+  for (const auto& row : eng.arr) {
+    const Json* name = row.find("name");
+    if (name && name->isString()) {
+      if (name->str == "DuckDuckGo") hasBuiltin = true;
+      if (name->str == "Example Search") hasCustom = true;
+    }
+  }
+  CHECK(n, hasBuiltin && hasCustom);
 }
 
 /* -------------------------------- storage -------------------------------- */
@@ -421,6 +442,9 @@ void runDlpath() {
   std::string p1 = uniquePath(dir, "file.txt");
   CHECK_EQ_STR(n, p1, pathJoin(dir, "file.txt"));
   CHECK(n, writeFileAtomic(p1, "x"));
+  CHECK(n, writeFileAtomic(p1, "replacement"));
+  std::string fileContents;
+  CHECK(n, readFile(p1, fileContents) && fileContents == "replacement");
   std::string p2 = uniquePath(dir, "file.txt");
   CHECK_EQ_STR(n, p2, pathJoin(dir, "file (2).txt"));
 
