@@ -107,22 +107,35 @@ bool readFile(const std::string& path, std::string& out) {
 }
 
 bool writeFileAtomic(const std::string& path, const std::string& data) {
-  std::string tmp = path + ".tmp";
-  HANDLE h = CreateFileW(toWide(tmp).c_str(), GENERIC_WRITE, 0, nullptr,
-                         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (data.size() > static_cast<size_t>(MAXDWORD)) return false;
+
+  static volatile LONG sequence = 0;
+  const LONG id = ::InterlockedIncrement(&sequence);
+  const std::string tmp = path + ".tmp." +
+      std::to_string(::GetCurrentProcessId()) + "." + std::to_string(id);
+  const std::wstring tmpWide = toWide(tmp);
+  const std::wstring pathWide = toWide(path);
+  HANDLE h = CreateFileW(tmpWide.c_str(), GENERIC_WRITE, 0, nullptr,
+                         CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (h == INVALID_HANDLE_VALUE) return false;
+
   DWORD written = 0;
   bool ok = data.empty() ||
             (WriteFile(h, data.data(), static_cast<DWORD>(data.size()), &written,
                        nullptr) &&
-             written == data.size());
-  CloseHandle(h);
+             written == static_cast<DWORD>(data.size()));
+  if (ok) ok = FlushFileBuffers(h) != FALSE;
+  if (!CloseHandle(h)) ok = false;
   if (!ok) {
-    DeleteFileW(toWide(tmp).c_str());
+    DeleteFileW(tmpWide.c_str());
     return false;
   }
-  MoveFileExW(toWide(tmp).c_str(), toWide(path).c_str(),
-              MOVEFILE_REPLACE_EXISTING);
+
+  if (!MoveFileExW(tmpWide.c_str(), pathWide.c_str(),
+                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    DeleteFileW(tmpWide.c_str());
+    return false;
+  }
   return true;
 }
 
