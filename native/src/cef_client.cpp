@@ -671,8 +671,6 @@ bool Web98Client::OnShowPermissionPrompt(CefRefPtr<CefBrowser> browser,
              allowed(CEF_PERMISSION_TYPE_MIDI_SYSEX, "midiSysex") &&
              allowed(CEF_PERMISSION_TYPE_CLIPBOARD, "clipboard-read") &&
              allowed(CEF_PERMISSION_TYPE_KEYBOARD_LOCK, "keyboardLock");
-  // Downloads are always allowed (there is no Electron equivalent to block).
-  if (requested_permissions & CEF_PERMISSION_TYPE_MULTIPLE_DOWNLOADS) ok = true;
   callback->Continue(ok ? CEF_PERMISSION_RESULT_ACCEPT
                         : CEF_PERMISSION_RESULT_DENY);
   return true;
