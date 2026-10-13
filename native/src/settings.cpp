@@ -413,7 +413,9 @@ std::vector<std::string> SettingsModel::applyPatch(const Json& patch) {
       // setRaw validates stored values; patch values are already valid.
       for (auto& c : cache_.obj) {
         if (c.first == kv.first) {
-          c.second = out;
+          // setRaw("engines", ...) merges validated user engines with built-ins.
+          // Do not replace that merged value with the unmerged patch payload.
+          if (kv.first != "engines") c.second = out;
           break;
         }
       }
