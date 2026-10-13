@@ -64,10 +64,22 @@ std::string mediaTypeName(CefContextMenuParams::MediaType type) {
 }
 
 std::string originOf(const std::string& url) {
-  size_t scheme = url.find("://");
-  if (scheme == std::string::npos) return "null";
-  size_t start = url.rfind('/', scheme + 3);
-  std::string origin = start == std::string::npos ? url : url.substr(0, start);
+  const size_t scheme = url.find("://");
+  if (scheme == std::string::npos || scheme == 0) return "null";
+  const size_t authorityStart = scheme + 3;
+  const size_t authorityEnd = url.find_first_of("/?#", authorityStart);
+  if (authorityStart >= url.size()) return "null";
+  std::string origin = url.substr(0, authorityEnd == std::string::npos
+                                        ? std::string::npos
+                                        : authorityEnd);
+  for (size_t i = 0; i < scheme; ++i) {
+    if (origin[i] >= 'A' && origin[i] <= 'Z')
+      origin[i] = static_cast<char>(origin[i] - 'A' + 'a');
+  }
+  for (size_t i = authorityStart; i < origin.size(); ++i) {
+    if (origin[i] >= 'A' && origin[i] <= 'Z')
+      origin[i] = static_cast<char>(origin[i] - 'A' + 'a');
+  }
   return origin;
 }
 
