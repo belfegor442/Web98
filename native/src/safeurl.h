@@ -20,6 +20,9 @@ bool isAllowedNavigation(const std::string& url, bool fromWeb);
 
 bool isWebUrl(const std::string& url);
 
+// Lowercased scheme://authority (no path/query); "null" when unparseable.
+std::string originOf(const std::string& url);
+
 // Only mailto:/tel: may be handed to the OS.
 bool isSafeExternalUrl(const std::string& url);
 

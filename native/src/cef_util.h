@@ -11,6 +11,9 @@
 
 namespace web98 {
 
+// CefString -> std::string convenience.
+inline std::string str(const CefString& s) { return s.ToString(); }
+
 // CefPostTask only accepts CefRefPtr<CefTask>; this adapts std::function.
 class UiTask : public CefTask {
  public:

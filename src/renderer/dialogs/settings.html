@@ -146,6 +146,17 @@
             </div>
           </fieldset>
           <fieldset class="w98-group grp">
+            <legend>Pop-ups</legend>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-popup" checked />
+              Block pop-up windows
+            </label>
+            <div class="pane-note">
+              Prevents pages from opening new windows without your
+              interaction.
+            </div>
+          </fieldset>
+          <fieldset class="w98-group grp">
             <legend>Personal information</legend>
             <div class="pane-note">
               AutoComplete can suggest addresses, forms and passwords as you
@@ -239,6 +250,7 @@
         var ckStatus = document.getElementById('ck-status');
         var ckRestore = document.getElementById('ck-restore');
         var inDl = document.getElementById('in-dl');
+        var ckPopup = document.getElementById('ck-popup');
 
         function collect() {
           pending.homepage = inHome.value.trim() || pending.homepage;
@@ -246,6 +258,7 @@
           pending.toolbarVisible = ckToolbar.checked;
           pending.statusBar = ckStatus.checked;
           pending.sessionRestore = ckRestore.checked;
+          pending.popupBlocker = ckPopup.checked;
           pending.downloadsDir = inDl.value.trim() || null;
           return pending;
         }
@@ -263,6 +276,7 @@
           ckToolbar.checked = !!pending.toolbarVisible;
           ckStatus.checked = !!pending.statusBar;
           ckRestore.checked = !!pending.sessionRestore;
+          ckPopup.checked = pending.popupBlocker !== false;
           inDl.value = pending.downloadsDir || '';
         }
 

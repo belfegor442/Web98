@@ -167,12 +167,51 @@ bool runCommand(const std::string& name, const Json& arg, const CommandCtx& ctx)
     emit("chrome:focus-address");
     return true;
   }
+  if (name == "file:open") {
+    HWND owner = win ? win->hwnd() : nullptr;
+    std::string path = dialogs::openFileDialog(
+        owner, "Open File",
+        {"htm", "html", "txt", "log", "xml", "css", "js", "json", "md"});
+    if (!path.empty()) {
+      std::string url = pathToFileUrl(path);
+      if (tabs) tabs->create(url, true);
+    }
+    return true;
+  }
   if (name == "file:save-page") {
     savePageTab(tab);
     return true;
   }
   if (name == "file:print") {
     if (tab && tab->client) printTab(tab->client->browser());
+    return true;
+  }
+  if (name == "file:print-pdf") {
+    // Save as PDF: pick a destination, then PrintToPDF.
+    if (tab && tab->client && tab->client->browser()) {
+      HWND owner = ctx.win ? ctx.win->hwnd() : nullptr;
+      std::string suggested = "page.pdf";
+      if (!tab->url.empty()) {
+        // Derive a filename from the URL path.
+        size_t slash = tab->url.find_last_of('/');
+        if (slash != std::string::npos && slash + 1 < tab->url.size()) {
+          suggested = tab->url.substr(slash + 1);
+          size_t q = suggested.find_first_of("?#");
+          if (q != std::string::npos) suggested = suggested.substr(0, q);
+          if (suggested.empty()) suggested = "page";
+          suggested += ".pdf";
+        }
+      }
+      std::string path = dialogs::saveFileDialog(owner, "Save as PDF",
+                                                 suggested, {"pdf"});
+      if (!path.empty()) {
+        if (path.size() < 4 || asciiLower(path.substr(path.size() - 4)) != ".pdf")
+          path += ".pdf";
+        CefPdfPrintSettings settings;
+        settings.display_header_footer = false;
+        tab->client->browser()->GetHost()->PrintToPDF(path, settings, nullptr);
+      }
+    }
     return true;
   }
   if (name == "file:exit") {
@@ -208,6 +247,11 @@ bool runCommand(const std::string& name, const Json& arg, const CommandCtx& ctx)
     double z = std::min(3.0, std::max(0.25, argN));
     if (tabs) tabs->setZoom(z);
     app.setSetting("zoom", Json::makeNumber(z));
+    // Also remember per-site.
+    if (tab && !tab->url.empty()) {
+      std::string origin = originOf(tab->url);
+      if (!origin.empty() && origin != "file://") app.setSiteZoom(origin, z);
+    }
     return true;
   }
   if (name == "view:toolbar") {
@@ -230,6 +274,10 @@ bool runCommand(const std::string& name, const Json& arg, const CommandCtx& ctx)
   }
   if (name == "view:source") {
     viewSourceAsync(ctx);
+    return true;
+  }
+  if (name == "view:page-info") {
+    app.openDialog("pageinfo", win);
     return true;
   }
 
@@ -298,6 +346,14 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
       case 'l':
         emit("chrome:focus-address");
         return true;
+      case 'o': {
+        HWND owner = win ? win->hwnd() : nullptr;
+        std::string path = dialogs::openFileDialog(
+            owner, "Open File",
+            {"htm", "html", "txt", "log", "xml", "css", "js", "json", "md"});
+        if (!path.empty() && tabs) tabs->create(pathToFileUrl(path), true);
+        return true;
+      }
       case 'r':
         if (auto h = hostOf()) h->ReloadIgnoreCache();
         return true;
@@ -327,6 +383,10 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
                                      : 1.1);
         if (tabs) tabs->setZoom(z);
         app.setSetting("zoom", Json::makeNumber(z));
+        if (tab && !tab->url.empty()) {
+          std::string origin = originOf(tab->url);
+          if (!origin.empty() && origin != "file://") app.setSiteZoom(origin, z);
+        }
         return true;
       }
       case VK_OEM_MINUS:
@@ -335,6 +395,10 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
         double z = std::max(0.25, base - 0.1);
         if (tabs) tabs->setZoom(z);
         app.setSetting("zoom", Json::makeNumber(z));
+        if (tab && !tab->url.empty()) {
+          std::string origin = originOf(tab->url);
+          if (!origin.empty() && origin != "file://") app.setSiteZoom(origin, z);
+        }
         return true;
       }
       case '0':
@@ -373,6 +437,19 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
   }
   if (code == VK_F5) {
     if (auto h = hostOf()) h->Reload();
+    return true;
+  }
+  if (code == VK_F3) {
+    // F3 = Find Next (same direction as last search).
+    emit("chrome:find-next");
+    return true;
+  }
+  if (ctrl && !shift && !alt && k == 'g') {
+    emit("chrome:find-next");
+    return true;
+  }
+  if (ctrl && shift && !alt && k == 'g') {
+    emit("chrome:find-prev");
     return true;
   }
   if (code == VK_F11) {

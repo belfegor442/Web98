@@ -12,6 +12,7 @@
 #include "include/cef_dialog_handler.h"
 #include "include/cef_display_handler.h"
 #include "include/cef_download_handler.h"
+#include "include/cef_find_handler.h"
 #include "include/cef_focus_handler.h"
 #include "include/cef_jsdialog_handler.h"
 #include "include/cef_keyboard_handler.h"
@@ -50,6 +51,7 @@ class Web98Client : public CefClient,
                     public CefDialogHandler,
                     public CefDisplayHandler,
                     public CefDownloadHandler,
+                    public CefFindHandler,
                     public CefFocusHandler,
                     public CefJSDialogHandler,
                     public CefKeyboardHandler,
@@ -77,6 +79,7 @@ class Web98Client : public CefClient,
   CefRefPtr<CefDialogHandler> GetDialogHandler() override { return this; }
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
   CefRefPtr<CefDownloadHandler> GetDownloadHandler() override { return this; }
+  CefRefPtr<CefFindHandler> GetFindHandler() override { return this; }
   CefRefPtr<CefFocusHandler> GetFocusHandler() override { return this; }
   CefRefPtr<CefJSDialogHandler> GetJSDialogHandler() override { return this; }
   CefRefPtr<CefKeyboardHandler> GetKeyboardHandler() override { return this; }
@@ -126,6 +129,11 @@ class Web98Client : public CefClient,
   void OnDownloadUpdated(CefRefPtr<CefBrowser> browser,
                          CefRefPtr<CefDownloadItem> download_item,
                          CefRefPtr<CefDownloadItemCallback> callback) override;
+
+  // --- CefFindHandler -------------------------------------------------------
+  void OnFindResult(CefRefPtr<CefBrowser> browser, int identifier,
+                    int count, const CefRect& selection_rect, int active_match,
+                    bool final_update) override;
 
   // --- CefFocusHandler ------------------------------------------------------
   bool OnSetFocus(CefRefPtr<CefBrowser> browser, FocusSource source) override;

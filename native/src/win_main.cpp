@@ -2,6 +2,7 @@
 // With USE_SANDBOX this is the client DLL loaded by bootstrap.exe, which
 // calls RunWinMain; without it, plain wWinMain.
 #include <windows.h>
+#include <objbase.h>
 
 #include <string>
 

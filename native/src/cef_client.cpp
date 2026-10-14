@@ -28,8 +28,6 @@
 namespace web98 {
 namespace {
 
-std::string str(const CefString& s) { return s.ToString(); }
-
 // Programmatic loads (LoadURL) and history navigations must bypass the
 // navigation policy exactly like Electron, which does not emit will-navigate
 // for loadURL()/back()/forward().
@@ -61,26 +59,6 @@ std::string mediaTypeName(CefContextMenuParams::MediaType type) {
     case CM_MEDIATYPE_NONE:
     default: return "none";
   }
-}
-
-std::string originOf(const std::string& url) {
-  const size_t scheme = url.find("://");
-  if (scheme == std::string::npos || scheme == 0) return "null";
-  const size_t authorityStart = scheme + 3;
-  const size_t authorityEnd = url.find_first_of("/?#", authorityStart);
-  if (authorityStart >= url.size()) return "null";
-  std::string origin = url.substr(0, authorityEnd == std::string::npos
-                                        ? std::string::npos
-                                        : authorityEnd);
-  for (size_t i = 0; i < scheme; ++i) {
-    if (origin[i] >= 'A' && origin[i] <= 'Z')
-      origin[i] = static_cast<char>(origin[i] - 'A' + 'a');
-  }
-  for (size_t i = authorityStart; i < origin.size(); ++i) {
-    if (origin[i] >= 'A' && origin[i] <= 'Z')
-      origin[i] = static_cast<char>(origin[i] - 'A' + 'a');
-  }
-  return origin;
 }
 
 std::string base64Encode(const unsigned char* data, size_t len) {
@@ -448,6 +426,21 @@ void Web98Client::OnDownloadUpdated(CefRefPtr<CefBrowser> browser,
   AppCore::get().updateCefDownload(download_item, callback);
 }
 
+/* --------------------------------- find ------------------------------------ */
+
+void Web98Client::OnFindResult(CefRefPtr<CefBrowser> browser, int identifier,
+                               int count, const CefRect& selection_rect,
+                               int active_match, bool final_update) {
+  if (!final_update) return;
+  Json payload = Json::makeObject();
+  payload.obj.emplace_back("count", Json::makeNumber(count));
+  payload.obj.emplace_back("active", Json::makeNumber(active_match));
+  // The find runs in the tab's browser; forward to the chrome page.
+  if (ctx_.window) ctx_.window->emit("chrome:find-result", payload);
+  else if (ctx_.role == BrowserCtx::kChrome)
+    SendEvent("chrome:find-result", payload);
+}
+
 /* -------------------------------- focus ----------------------------------- */
 
 bool Web98Client::OnSetFocus(CefRefPtr<CefBrowser> browser, FocusSource source) {
@@ -572,6 +565,13 @@ bool Web98Client::OnBeforePopup(CefRefPtr<CefBrowser> browser,
     // web URL from them via window.open.
     if (ctx_.role != BrowserCtx::kTab) return true;
     std::string current = ctx_.tab ? ctx_.tab->url : std::string();
+    // Popup blocker: script-initiated window.open (no user gesture) is
+    // blocked unless the setting is off. User clicks always open in a tab.
+    bool blockerOn = AppCore::get().settingsModel().getBool("popupBlocker", true);
+    if (blockerOn && !user_gesture && !url.empty()) {
+      AppCore::get().notifyPopupBlocked();
+      return true;
+    }
     if (isLoadableUrl(url) && isAllowedNavigation(url, isWebUrl(current))) {
       ctx_.tabs->create(url, true);
     }

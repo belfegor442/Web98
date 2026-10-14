@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Page Information</title>
+    <link rel="stylesheet" href="../../../assets/ie5/theme.css" />
+    <link rel="stylesheet" href="../../../css/ie5-shell.css" />
+    <link rel="stylesheet" href="dialogs.css" />
+    <style>
+      .pi-section { margin-bottom: 10px; }
+      .pi-section h2 {
+        font-size: 12px; margin: 0 0 4px 0; color: #000080;
+        border-bottom: 1px solid #808080; padding-bottom: 2px;
+      }
+      .pi-row { display: flex; margin: 2px 0; }
+      .pi-label { flex: 0 0 100px; color: #404040; font-size: 11px; }
+      .pi-value {
+        flex: 1 1 auto; font-size: 11px; word-break: break-all;
+        background: #fff; border: 1px solid #808080; padding: 1px 4px;
+      }
+      .pi-secure { color: #008000; font-weight: bold; }
+      .pi-insecure { color: #800000; font-weight: bold; }
+      .pi-tab-row { display: flex; gap: 6px; margin-bottom: 8px; }
+      .pi-tab {
+        padding: 2px 10px; cursor: pointer; font-size: 11px;
+        border: 1px solid #808080; background: #c0c0c0;
+      }
+      .pi-tab.active { background: #dfdfdf; }
+      .pi-pane { display: none; }
+      .pi-pane.active { display: block; }
+      .pi-cookies {
+        height: 140px; overflow-y: auto; background: #fff;
+        border: 1px solid #808080; font-size: 11px;
+      }
+      .pi-cookie { padding: 2px 4px; border-bottom: 1px solid #e0e0e0; }
+    </style>
+  </head>
+  <body>
+    <div class="ow-root win is-active">
+      <div class="ow-titlebar">
+        <span class="ow-titlebar__icon"></span>
+        <span class="ow-titlebar__text" id="title">Page Information</span>
+        <span class="ow-titlebar__controls">
+          <button class="ow-winbtn" data-control="close" title="Close"></button>
+        </span>
+      </div>
+      <div class="dlg-body">
+        <div class="pi-tab-row">
+          <div class="pi-tab active" data-tab="general">General</div>
+          <div class="pi-tab" data-tab="security">Security</div>
+          <div class="pi-tab" data-tab="cookies">Cookies</div>
+        </div>
+        <div class="pi-pane active" id="pane-general">
+          <div class="pi-section">
+            <h2>Page</h2>
+            <div class="pi-row"><span class="pi-label">Address:</span><span class="pi-value" id="addr">(loading...)</span></div>
+            <div class="pi-row"><span class="pi-label">Title:</span><span class="pi-value" id="ptitle">(none)</span></div>
+          </div>
+        </div>
+        <div class="pi-pane" id="pane-security">
+          <div class="pi-section">
+            <h2>Connection</h2>
+            <div class="pi-row"><span class="pi-label">Protocol:</span><span class="pi-value" id="proto">(unknown)</span></div>
+            <div class="pi-row"><span class="pi-label">Status:</span><span class="pi-value" id="conn">(unknown)</span></div>
+            <div class="pi-row"><span class="pi-label">Cipher:</span><span class="pi-value" id="cipher">(unknown)</span></div>
+          </div>
+        </div>
+        <div class="pi-pane" id="pane-cookies">
+          <div class="pi-section">
+            <h2>Cookies for this site</h2>
+            <div class="pi-cookies" id="cookies">(loading...)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var w = window.web98;
+        if (!w) return;
+        var addrEl = document.getElementById('addr');
+        var titleEl = document.getElementById('ptitle');
+        var protoEl = document.getElementById('proto');
+        var connEl = document.getElementById('conn');
+        var cipherEl = document.getElementById('cipher');
+        var cookiesEl = document.getElementById('cookies');
+        var titlebar = document.getElementById('title');
+        // Tab switching
+        document.querySelectorAll('.pi-tab').forEach(function (tab) {
+          tab.addEventListener('click', function () {
+            document.querySelectorAll('.pi-tab').forEach(function (t) { t.classList.remove('active'); });
+            document.querySelectorAll('.pi-pane').forEach(function (p) { p.classList.remove('active'); });
+            tab.classList.add('active');
+            document.getElementById('pane-' + tab.dataset.tab).classList.add('active');
+          });
+        });
+        w.on('pageinfo:data', function (info) {
+          if (!info || typeof info !== 'object') return;
+          addrEl.textContent = info.url || '(unknown)';
+          titleEl.textContent = info.title || '(none)';
+          titlebar.textContent = 'Page Information — ' + (info.title || 'Page');
+          var isSecure = info.secure === true;
+          protoEl.textContent = info.protocol || (isSecure ? 'https' : 'http');
+          connEl.innerHTML = isSecure
+            ? '<span class="pi-secure">Encrypted (Secure)</span>'
+            : '<span class="pi-insecure">Not Encrypted</span>';
+          cipherEl.textContent = info.cipher || 'n/a';
+        });
+        w.on('pageinfo:cookies', function (cookies) {
+          if (!Array.isArray(cookies) || cookies.length === 0) {
+            cookiesEl.textContent = '(no cookies)';
+            return;
+          }
+          cookiesEl.innerHTML = cookies.map(function (c) {
+            return '<div class="pi-cookie"><b>' + (c.name || '?') + '</b> = ' + (c.value || '') +
+                   (c.domain ? ' &nbsp;[' + c.domain + ']' : '') + '</div>';
+          }).join('');
+        });
+        w.invoke('pageinfo:load');
+      })();
+    </script>
+  </body>
+</html>

@@ -50,7 +50,7 @@ bool contextCommandOk(const std::string& s) {
 }
 
 const char* kDialogPages[] = {"about",  "downloads", "favorites",
-                              "history", "settings", "source"};
+                              "history", "pageinfo", "settings", "source"};
 
 Json bookmarkToJson(const BookmarkRow& b) {
   Json o = Json::makeObject();
@@ -619,15 +619,18 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
                                         ? arg.find("term")->stringOr("")
                                         : "",
                                     200);
+    bool matchCase = arg.isObject() && arg.find("matchCase") &&
+                     arg.find("matchCase")->isBool() &&
+                     arg.find("matchCase")->b;
     if (tab && tab->client && tab->client->browser()) {
       CefRefPtr<CefBrowserHost> host = tab->client->browser()->GetHost();
       if (action == "stop") {
         host->StopFinding(true);
       } else if (!term.empty()) {
         bool forward = action != "prev";
-        if (action == "next") host->Find(term, true, false, true);
-        else if (action == "prev") host->Find(term, false, false, true);
-        else host->Find(term, forward, false, false);
+        if (action == "next") host->Find(term, true, matchCase, true);
+        else if (action == "prev") host->Find(term, false, matchCase, true);
+        else host->Find(term, forward, matchCase, false);
       }
     }
     if (isInvoke) replyNull();
@@ -1107,6 +1110,68 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
     reply(Json::makeBool(ok));
     return;
   }
+  if (channel == "pageinfo:load") {
+    // Collect info about the active tab and send it to the pageinfo dialog.
+    if (!ctx.dialog) {
+      reply(Json::makeNull());
+      return;
+    }
+    MainWindow* w = primaryWindow();
+    if (!w || !w->tabs()) {
+      reply(Json::makeNull());
+      return;
+    }
+    Tab* tab = w->tabs()->active();
+    if (!tab) {
+      reply(Json::makeNull());
+      return;
+    }
+    Json data = Json::makeObject();
+    data.obj.emplace_back("url", Json::makeString(tab->url));
+    data.obj.emplace_back("title", Json::makeString(tab->title));
+    bool secure = tab->url.compare(0, 8, "https://") == 0;
+    data.obj.emplace_back("secure", Json::makeBool(secure));
+    data.obj.emplace_back("protocol", Json::makeString(secure ? "https" : "http"));
+    ctx.dialog->emit("pageinfo:data", data);
+    // Visit cookies for this origin.
+    std::string origin = originOf(tab->url);
+    if (origin.empty() || origin == "null") origin = tab->url;
+    CefRefPtr<CefCookieManager> cm = CefRequestContext::GetGlobalContext()
+                                         ? CefRequestContext::GetGlobalContext()
+                                             ->GetCookieManager(nullptr)
+                                         : nullptr;
+    if (cm) {
+      DialogWindow* dlg = ctx.dialog;
+      struct Visitor : public CefCookieVisitor {
+        DialogWindow* dlg = nullptr;
+        Json list = Json::makeArray();
+        bool Visit(const CefCookie& cookie, int count, int total,
+                   bool& deleteCookie) override {
+          Json c = Json::makeObject();
+          c.obj.emplace_back("name",
+                             Json::makeString(CefString(&cookie.name).ToString()));
+          c.obj.emplace_back("value",
+                             Json::makeString(CefString(&cookie.value).ToString()));
+          c.obj.emplace_back("domain",
+                             Json::makeString(CefString(&cookie.domain).ToString()));
+          list.obj.emplace_back("", c);
+          if (dlg && count + 1 == total) dlg->emit("pageinfo:cookies", list);
+          return true;
+        }
+        IMPLEMENT_REFCOUNTING(Visitor);
+      };
+      std::string originHost = origin;
+      // Strip scheme for VisitUrlCookies filter.
+      size_t scheme = originHost.find("://");
+      if (scheme != std::string::npos) originHost = originHost.substr(scheme + 3);
+      auto v = CefRefPtr<Visitor>(new Visitor);
+      v->dlg = dlg;
+      cm->VisitUrlCookies(originHost, true, v);
+      if (dlg) dlg->emit("pageinfo:cookies", Json::makeArray());
+    }
+    if (isInvoke) replyNull();
+    return;
+  }
   if (channel == "app:view-source") {
     MainWindow* w = ctx.window ? ctx.window
                               : (ctx.tabs ? ctx.tabs->window() : nullptr);
@@ -1294,6 +1359,40 @@ void AppCore::confirmDangerousDownload(int id) {
     if (r != IDYES) return;
   }
   dialogs::shellOpenPath(p);
+}
+
+void AppCore::notifyPopupBlocked() {
+  ++popupBlockedCount_;
+  Json payload = Json::makeObject();
+  payload.obj.emplace_back("count", Json::makeNumber(popupBlockedCount_));
+  for (auto& w : mainWindows_)
+    if (w) w->emit("chrome:popup-blocked", payload);
+}
+
+double AppCore::siteZoom(const std::string& origin) {
+  if (origin.empty()) return settings_.getNumber("zoom", 1);
+  Json sites = settings_.get("siteZoom");
+  if (!sites.isObject()) return settings_.getNumber("zoom", 1);
+  const Json* v = sites.find(origin);
+  if (v && v->isNumber()) return v->numberOr(1);
+  return settings_.getNumber("zoom", 1);
+}
+
+void AppCore::setSiteZoom(const std::string& origin, double zoom) {
+  if (origin.empty()) return;
+  Json sites = settings_.get("siteZoom");
+  if (!sites.isObject()) sites = Json::makeObject();
+  sites.obj.erase(
+      std::remove_if(sites.obj.begin(), sites.obj.end(),
+                     [&](const std::pair<std::string, Json>& kv) {
+                       return kv.first == origin;
+                     }),
+      sites.obj.end());
+  sites.obj.emplace_back(origin, Json::makeNumber(zoom));
+  // Cap the map at 200 entries to avoid unbounded growth.
+  while (sites.obj.size() > 200) sites.obj.erase(sites.obj.begin());
+  settings_.setRaw("siteZoom", sites);
+  storage_.setSetting("siteZoom", sites);
 }
 
 }  // namespace web98

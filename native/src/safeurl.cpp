@@ -107,6 +107,26 @@ bool isBookmarkUrl(const std::string& url) {
   return s == "http:" || s == "https:" || s == "ftp:" || s == "file:";
 }
 
+std::string originOf(const std::string& url) {
+  const size_t scheme = url.find("://");
+  if (scheme == std::string::npos || scheme == 0) return "null";
+  const size_t authorityStart = scheme + 3;
+  if (authorityStart >= url.size()) return "null";
+  const size_t authorityEnd = url.find_first_of("/?#", authorityStart);
+  std::string origin = url.substr(0, authorityEnd == std::string::npos
+                                        ? std::string::npos
+                                        : authorityEnd);
+  for (size_t i = 0; i < scheme; ++i) {
+    if (origin[i] >= 'A' && origin[i] <= 'Z')
+      origin[i] = static_cast<char>(origin[i] - 'A' + 'a');
+  }
+  for (size_t i = authorityStart; i < origin.size(); ++i) {
+    if (origin[i] >= 'A' && origin[i] <= 'Z')
+      origin[i] = static_cast<char>(origin[i] - 'A' + 'a');
+  }
+  return origin;
+}
+
 bool isSearchTemplate(const std::string& t) {
   if (t.empty() || t.size() > 500) return false;
   static const std::regex re("^https?://", std::regex_constants::icase);

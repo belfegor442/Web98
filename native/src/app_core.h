@@ -91,6 +91,11 @@ class AppCore : public DownloadListener {
   void removeDialog(DialogWindow* d);
   void notifyQuit() { quitting_ = true; }
   bool quitting() const { return quitting_; }
+  // Popup blocker: count blocked popups and notify the chrome UI.
+  void notifyPopupBlocked();
+  // Per-site zoom memory: get/set zoom factor for an origin.
+  double siteZoom(const std::string& origin);
+  void setSiteZoom(const std::string& origin, double zoom);
 
   // --- events ---------------------------------------------------------------
   // Electron deps.broadcast: reaches the chrome renderer of every main
@@ -136,6 +141,7 @@ class AppCore : public DownloadListener {
   std::vector<std::unique_ptr<DialogWindow>> retiredDialogs_;
   bool quitting_ = false;
   bool nextWindowShow_ = true;
+  int popupBlockedCount_ = 0;
 
   // CEF download id -> Web98 record id.
   std::map<uint32_t, int> cefDownloadIds_;

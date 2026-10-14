@@ -228,6 +228,9 @@ void TabManager::close(int id, bool destroyed) {
     if (!tabs_.empty()) {
       Tab* next = tabs_[std::min<size_t>(idx, tabs_.size() - 1)].get();
       if (next) setActive(next->id);
+    } else if (win_) {
+      // Last tab closed: close the window (IE/Chrome behaviour).
+      win_->requestClose();
     }
   }
   // If the closed tab was the in-flight flush job, advance the queue.
@@ -362,6 +365,16 @@ void TabManager::OnAddressChange(Tab* tab, const std::string& url) {
   tab->url = url;
   tab->error = Json::makeNull();
   tab->crashedOnce = false;
+  // Apply per-site zoom memory.
+  std::string origin = originOf(url);
+  if (!origin.empty() && origin != "file://") {
+    double sz = AppCore::get().siteZoom(origin);
+    if (sz > 0 && std::abs(sz - tab->zoom) > 0.001) {
+      tab->zoom = sz;
+      if (tab->client && tab->client->browser() && tab->client->browser()->GetHost())
+        tab->client->browser()->GetHost()->SetZoomLevel(std::log(sz) / std::log(1.2));
+    }
+  }
   emitTabs();
   navState(tab);
 }

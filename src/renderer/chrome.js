@@ -158,8 +158,10 @@
         { cmd: 'file:new-window', label: 'New Window', hint: 'Ctrl+N' },
         { sep: true },
         { cmd: 'file:open-location', label: 'Open Location...', hint: 'Ctrl+L' },
+        { cmd: 'file:open', label: 'Open File...', hint: 'Ctrl+O' },
         { cmd: 'file:save-page', label: 'Save Page As...', hint: 'Ctrl+S' },
         { cmd: 'file:print', label: 'Print...', hint: 'Ctrl+P' },
+        { cmd: 'file:print-pdf', label: 'Save as PDF...' },
         { sep: true },
         { cmd: 'file:close-tab', label: 'Close Tab', hint: 'Ctrl+W' },
         { cmd: 'file:close-window', label: 'Close Window', hint: 'Ctrl+Shift+W' },
@@ -201,6 +203,7 @@
           ]
         },
         { cmd: 'view:source', label: 'Source' },
+        { cmd: 'view:page-info', label: 'Page Info...' },
         { sep: true },
         { cmd: 'view:fullscreen', label: 'Full Screen', hint: 'F11' }
       ]
@@ -665,18 +668,49 @@
   function closeFind() {
     $('findbar').classList.remove('is-open');
     invoke('app:find', { action: 'stop' });
+    $('find-count').textContent = '';
     pushBounds();
   }
   $('find-close').addEventListener('click', closeFind);
-  $('find-next').addEventListener('click', function () {
-    invoke('app:find', { action: 'next', term: $('find-input').value });
-  });
-  $('find-prev').addEventListener('click', function () {
-    invoke('app:find', { action: 'prev', term: $('find-input').value });
-  });
+  function findAction(action) {
+    invoke('app:find', {
+      action: action,
+      term: $('find-input').value,
+      matchCase: $('find-case').checked
+    });
+  }
+  $('find-next').addEventListener('click', function () { findAction('next'); });
+  $('find-prev').addEventListener('click', function () { findAction('prev'); });
   $('find-input').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') invoke('app:find', { action: 'next', term: $('find-input').value });
+    if (e.key === 'Enter') findAction('next');
     if (e.key === 'Escape') closeFind();
+  });
+  $('find-case').addEventListener('change', function () {
+    if ($('find-input').value) findAction('find');
+  });
+  $('find-input').addEventListener('input', function () {
+    findAction('find');
+  });
+  api.on('chrome:find-next', function () {
+    if (!$('findbar').classList.contains('is-open')) return;
+    findAction('next');
+  });
+  api.on('chrome:find-prev', function () {
+    if (!$('findbar').classList.contains('is-open')) return;
+    findAction('prev');
+  });
+  api.on('chrome:find-result', function (d) {
+    if (!d) return;
+    var n = d.count | 0;
+    var a = d.active | 0;
+    $('find-count').textContent = n === 0 ? 'No matches' : (a + 1) + ' of ' + n;
+  });
+  api.on('chrome:popup-blocked', function (d) {
+    var n = (d && d.count) | 0;
+    $('status').textContent = n === 1
+      ? 'Popup blocked (1)'
+      : 'Popups blocked (' + n + ')';
+    setTimeout(function () { $('status').textContent = 'Done'; }, 3000);
   });
 
   /* --------------------------- context menu -------------------------------- */
