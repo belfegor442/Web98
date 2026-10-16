@@ -418,6 +418,38 @@ bool Web98Client::OnBeforeDownload(CefRefPtr<CefBrowser> browser,
                                    CefRefPtr<CefDownloadItem> download_item,
                                    const CefString& suggested_name,
                                    CefRefPtr<CefBeforeDownloadCallback> callback) {
+  std::string name = str(suggested_name);
+  // Warn before saving files the OS could execute or that commonly carry
+  // malware (mirrors IE/Chrome "this type of file can harm your computer").
+  static const char* kDangerous[] = {
+      "exe", "scr", "com", "pif", "bat", "cmd", "msi", "msp", "cpl", "jar",
+      "js", "jse", "vbs", "vbe", "wsf", "wsh", "ps1", "reg", "lnk", "hta"};
+  std::string ext;
+  size_t dot = name.find_last_of('.');
+  if (dot != std::string::npos && dot + 1 < name.size()) {
+    ext = name.substr(dot + 1);
+    for (auto& c : ext) c = static_cast<char>(::tolower(c));
+  }
+  bool dangerous = false;
+  for (const char* e : kDangerous)
+    if (ext == e) { dangerous = true; break; }
+  if (dangerous && ctx_.role == BrowserCtx::kTab) {
+    HWND owner = nullptr;
+    if (ctx_.window) owner = ctx_.window->hwnd();
+    else if (ctx_.tabs && ctx_.tabs->window())
+      owner = ctx_.tabs->window()->hwnd();
+    std::string text =
+        "\"" + name + "\"\n\nThis type of file can harm your computer. If the "
+        "download comes from a source you don't trust, keep it and don't run "
+        "it.\n\nDo you want to keep this file?";
+    int r = dialogs::messageBox(owner, text, "File Download Warning",
+                                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (r != IDYES) {
+      // CefBeforeDownloadCallback has no Cancel(); returning true without
+      // calling Continue() aborts the download.
+      return true;
+    }
+  }
   std::string path;
   AppCore::get().registerCefDownload(download_item->GetId(),
                                      str(download_item->GetURL()),
