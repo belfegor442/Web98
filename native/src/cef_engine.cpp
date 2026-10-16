@@ -96,6 +96,12 @@ Tab* TabManager::get(int id) {
   return nullptr;
 }
 
+int TabManager::indexOf(int id) const {
+  for (size_t i = 0; i < tabs_.size(); ++i)
+    if (tabs_[i]->id == id) return static_cast<int>(i);
+  return -1;
+}
+
 Tab* TabManager::active() { return get(activeId_); }
 
 Tab* TabManager::findByBrowser(int browserId) {
@@ -216,10 +222,16 @@ void TabManager::close(int id, bool destroyed) {
   tabs_.erase(tabs_.begin() + idx);
   Tab* tab = owned.get();
 
+  // Remember the closed tab for Ctrl+Shift+T (skip empty new tabs).
+  if (!tab->url.empty()) {
+    closedTabs_.push_back({tab->url, tab->title});
+    if (closedTabs_.size() > 10) closedTabs_.erase(closedTabs_.begin());
+  }
+
   if (!destroyed && tab->client) {
     CefRefPtr<CefBrowser> b = tab->client->browser();
     tab->client->Detach();
-    if (b) b->GetHost()->CloseBrowser(true);
+    if (b) b->GetHost()->CloseBrowser(false);
     tab->client = nullptr;
   }
 
@@ -229,7 +241,6 @@ void TabManager::close(int id, bool destroyed) {
       Tab* next = tabs_[std::min<size_t>(idx, tabs_.size() - 1)].get();
       if (next) setActive(next->id);
     } else if (win_) {
-      // Last tab closed: close the window (IE/Chrome behaviour).
       win_->requestClose();
     }
   }
@@ -239,6 +250,31 @@ void TabManager::close(int id, bool destroyed) {
     ++flushToken_;
     scheduleFlush(100);
   }
+  emitTabs();
+}
+
+Tab* TabManager::duplicate(int id) {
+  Tab* src = get(id);
+  if (!src) return nullptr;
+  Tab* copy = create(src->url, true);
+  return copy;
+}
+
+Tab* TabManager::reopenClosed() {
+  if (closedTabs_.empty()) return nullptr;
+  ClosedTab last = closedTabs_.back();
+  closedTabs_.pop_back();
+  return create(last.url, true);
+}
+
+void TabManager::move(int id, int beforeId) {
+  int from = indexOf(id);
+  int to = indexOf(beforeId);
+  if (from < 0 || to < 0 || from == to) return;
+  std::unique_ptr<Tab> item = std::move(tabs_[from]);
+  tabs_.erase(tabs_.begin() + from);
+  if (from < to) --to;
+  tabs_.insert(tabs_.begin() + to, std::move(item));
   emitTabs();
 }
 

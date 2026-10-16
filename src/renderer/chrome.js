@@ -18,6 +18,7 @@
     zone: 'Internet zone', error: null
   };
   var tabs = [];
+  var dragTabId = 0;
   var settings = null;
   var activeFloat = null; // single open floating element (menus, lists)
   var lastBounds = null;
@@ -164,6 +165,8 @@
         { cmd: 'file:print-pdf', label: 'Save as PDF...' },
         { sep: true },
         { cmd: 'file:close-tab', label: 'Close Tab', hint: 'Ctrl+W' },
+        { cmd: 'tab:reopen', label: 'Reopen Closed Tab', hint: 'Ctrl+Shift+T' },
+        { cmd: 'tab:duplicate', label: 'Duplicate Tab' },
         { cmd: 'file:close-window', label: 'Close Window', hint: 'Ctrl+Shift+W' },
         { sep: true },
         { cmd: 'file:exit', label: 'Exit' }
@@ -516,6 +519,29 @@
           e.preventDefault();
           var cur = byTabId(row.id);
           if (cur) showTabMenu(e, cur);
+        });
+        // Drag to reorder.
+        tab.draggable = true;
+        tab.addEventListener('dragstart', function (e) {
+          dragTabId = row.id;
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', String(row.id)); } catch (err) {}
+          tab.classList.add('is-dragging');
+        });
+        tab.addEventListener('dragend', function () {
+          dragTabId = 0;
+          tab.classList.remove('is-dragging');
+        });
+        tab.addEventListener('dragover', function (e) {
+          if (!dragTabId || dragTabId === row.id) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        });
+        tab.addEventListener('drop', function (e) {
+          e.preventDefault();
+          if (!dragTabId || dragTabId === row.id) return;
+          invoke('tabs:move', { id: dragTabId, before: row.id });
+          dragTabId = 0;
         });
         rows.push(row);
       });
@@ -939,6 +965,8 @@
     invoke('bookmarks:list').then(function (all) {
       bookmarkItems = all.filter(function (b) { return b.url; });
       if (sidePanelMode === 'favorites') renderPanel();
+      var links = document.getElementById('linksbar');
+      if (links && !links.hidden) renderLinksBar(links);
     });
   }
 
@@ -946,7 +974,36 @@
     if (!settings) return;
     document.querySelector('.ow-toolbar').style.display = settings.toolbarVisible ? '' : 'none';
     document.querySelector('.ow-statusbar').hidden = settings.statusBar === false;
+    document.body.classList.toggle('no-anim', settings.animEnabled === false);
+    document.body.classList.toggle('force-focus', settings.focusOutlines === true);
+    document.body.classList.toggle('no-throb', settings.throbber === false);
+    var links = document.getElementById('linksbar');
+    if (links) {
+      links.hidden = settings.linksBar !== true;
+      if (!links.hidden) renderLinksBar(links);
+    }
     pushBounds();
+  }
+
+  function renderLinksBar(container) {
+    container.textContent = '';
+    var quick = bookmarkItems.filter(function (b) { return b.quick && b.url; });
+    if (!quick.length) {
+      var hint = el('span', '', container);
+      hint.style.color = '#404040';
+      hint.textContent = 'No quick links \u2014 right-click a tab to add favorites.';
+      return;
+    }
+    quick.forEach(function (b) {
+      var a = el('a', 'ow-linksbar__link', container);
+      a.textContent = b.name || b.url;
+      a.href = '#';
+      a.title = b.url;
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        invoke('nav:go', { url: b.url });
+      });
+    });
   }
 
   /* ------------------------------ boot ------------------------------------ */

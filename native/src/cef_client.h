@@ -156,6 +156,7 @@ class Web98Client : public CefClient,
   // --- CefLifeSpanHandler ---------------------------------------------------
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
+  bool DoClose(CefRefPtr<CefBrowser> browser) override;
   bool OnBeforePopup(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
                      int popup_id, const CefString& target_url,
                      const CefString& target_frame_name,

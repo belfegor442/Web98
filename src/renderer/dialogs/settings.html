@@ -251,6 +251,10 @@
         var ckRestore = document.getElementById('ck-restore');
         var inDl = document.getElementById('in-dl');
         var ckPopup = document.getElementById('ck-popup');
+        var ckAnim = document.getElementById('ck-anim');
+        var ckFocus = document.getElementById('ck-focus');
+        var ckLinks = document.getElementById('ck-links');
+        var ckThrob = document.getElementById('ck-throb');
 
         function collect() {
           pending.homepage = inHome.value.trim() || pending.homepage;
@@ -259,6 +263,10 @@
           pending.statusBar = ckStatus.checked;
           pending.sessionRestore = ckRestore.checked;
           pending.popupBlocker = ckPopup.checked;
+          pending.animEnabled = ckAnim.checked;
+          pending.focusOutlines = ckFocus.checked;
+          pending.linksBar = ckLinks.checked;
+          pending.throbber = ckThrob.checked;
           pending.downloadsDir = inDl.value.trim() || null;
           return pending;
         }
@@ -277,6 +285,10 @@
           ckStatus.checked = !!pending.statusBar;
           ckRestore.checked = !!pending.sessionRestore;
           ckPopup.checked = pending.popupBlocker !== false;
+          ckAnim.checked = pending.animEnabled !== false;
+          ckFocus.checked = !!pending.focusOutlines;
+          ckLinks.checked = !!pending.linksBar;
+          ckThrob.checked = pending.throbber !== false;
           inDl.value = pending.downloadsDir || '';
         }
 

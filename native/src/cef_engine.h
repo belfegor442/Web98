@@ -63,6 +63,12 @@ class TabManager {
   Tab* createBackground(const std::string& url);
   void close(int id, bool destroyed = false);
   void setActive(int id);
+  // Duplicate the tab with id `id` (opens a copy after it).
+  Tab* duplicate(int id);
+  // Reopen the most recently closed tab; returns the new tab or nullptr.
+  Tab* reopenClosed();
+  // Move tab `id` so it sits immediately before tab `beforeId`.
+  void move(int id, int beforeId);
   bool load(Tab* tab, const std::string& url);
   void setBounds(int x, int y, int w, int h);
   void setPopupHidden(bool hidden);
@@ -76,6 +82,7 @@ class TabManager {
   Tab* active();
   Json list() const;  // snapshot array
   int count() const { return static_cast<int>(tabs_.size()); }
+  int indexOf(int id) const;  // -1 when not found
   void each(const std::function<void(Tab*)>& fn);
   Tab* findByBrowser(int browserId);
   Tab* findByHwnd(HWND h);
@@ -119,6 +126,12 @@ class TabManager {
   MainWindow* win_;
   EmitFn emit_;
   std::vector<std::unique_ptr<Tab>> tabs_;
+  // Recently closed tabs (url+title), newest last. Max 10.
+  struct ClosedTab {
+    std::string url;
+    std::string title;
+  };
+  std::vector<ClosedTab> closedTabs_;
   int activeId_ = 0;
   int nextId_ = 1;
   bool hiddenForPopup_ = false;

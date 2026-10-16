@@ -212,6 +212,9 @@ void Web98Client::SendEvent(const std::string& channel, const Json& payload) {
 bool Web98Client::OnProcessMessageReceived(
     CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
     CefProcessId source_process, CefRefPtr<CefProcessMessage> message) {
+  if (detached_) {
+    return false;
+  }
   if (source_process != PID_RENDERER) return false;
   if (message->GetName() != "web98:ipc") return false;
   CefRefPtr<CefListValue> args = message->GetArgumentList();
@@ -368,6 +371,9 @@ bool Web98Client::OnFileDialog(CefRefPtr<CefBrowser> browser, FileDialogMode mod
 void Web98Client::OnAddressChange(CefRefPtr<CefBrowser> browser,
                                   CefRefPtr<CefFrame> frame,
                                   const CefString& url) {
+  if (detached_) {
+    return;
+  }
   if (ctx_.role != BrowserCtx::kTab || !ctx_.tab || !ctx_.tabs) return;
   if (!frame->IsMain()) return;
   ctx_.tabs->OnAddressChange(ctx_.tab, str(url));
@@ -542,6 +548,17 @@ void Web98Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
   if (ctx_.tabs && ctx_.tab) ctx_.tabs->OnTabClosed(ctx_.tab);
 }
 
+bool Web98Client::DoClose(CefRefPtr<CefBrowser> browser) {
+  // Our browsers are all child windows parented to an app-provided top-level
+  // frame (main window or dialog). By default CEF sends WM_CLOSE to the
+  // browser's top-level parent when DoClose returns false, and on Windows
+  // WM_CLOSE bubbles up the child hierarchy until it reaches a non-child
+  // window -- which would destroy the whole frame. Return true so CEF does
+  // NOT propagate the close to our parent window; we tear down the browser
+  // child ourselves (via CloseBrowser in TabManager/MainWindow).
+  return true;
+}
+
 bool Web98Client::OnBeforePopup(CefRefPtr<CefBrowser> browser,
                                 CefRefPtr<CefFrame> frame, int popup_id,
                                 const CefString& target_url,
@@ -584,6 +601,9 @@ bool Web98Client::OnBeforePopup(CefRefPtr<CefBrowser> browser,
 void Web98Client::OnLoadingStateChange(CefRefPtr<CefBrowser> browser,
                                        bool isLoading, bool canGoBack,
                                        bool canGoForward) {
+  if (detached_) {
+    return;
+  }
   if (ctx_.role != BrowserCtx::kTab || !ctx_.tab || !ctx_.tabs) return;
   ctx_.tabs->OnLoadingStateChange(ctx_.tab, isLoading, canGoBack, canGoForward);
 }
@@ -608,6 +628,9 @@ void Web98Client::OnLoadError(CefRefPtr<CefBrowser> browser,
                               CefRefPtr<CefFrame> frame, ErrorCode errorCode,
                               const CefString& errorText,
                               const CefString& failedUrl) {
+  if (detached_) {
+    return;
+  }
   if (ctx_.role != BrowserCtx::kTab || !frame->IsMain()) return;
   if (!ctx_.tab || !ctx_.tabs) return;
   if (errorCode == ERR_ABORTED) return;

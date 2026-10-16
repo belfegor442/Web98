@@ -238,8 +238,9 @@ bool sanitizeSettingsPatchValue(const std::string& key, const Json& in, Json& ou
     if (in.isArray()) return reject();
     return false;  // non-array silently ignored (JS: no out, no rejected)
   }
-  if (key == "popupBlocker" || key == "sessionRestore" || key == "statusBar" ||
-      key == "toolbarVisible") {
+  if (key == "animEnabled" || key == "focusOutlines" || key == "linksBar" ||
+      key == "popupBlocker" || key == "sessionRestore" || key == "statusBar" ||
+      key == "throbber" || key == "toolbarVisible") {
     if (in.isBool()) {
       out = in;
       return true;
@@ -333,9 +334,13 @@ void SettingsModel::initEmpty() {
   cache_.obj.emplace_back("homepage", Json::makeString(homepageUrl()));
   cache_.obj.emplace_back("searchEngine", Json::makeString("DuckDuckGo"));
   cache_.obj.emplace_back("engines", defaultEnginesJson());
+  cache_.obj.emplace_back("animEnabled", Json::makeBool(true));
+  cache_.obj.emplace_back("focusOutlines", Json::makeBool(false));
+  cache_.obj.emplace_back("linksBar", Json::makeBool(false));
   cache_.obj.emplace_back("popupBlocker", Json::makeBool(true));
   cache_.obj.emplace_back("sessionRestore", Json::makeBool(true));
   cache_.obj.emplace_back("statusBar", Json::makeBool(true));
+  cache_.obj.emplace_back("throbber", Json::makeBool(true));
   cache_.obj.emplace_back("toolbarVisible", Json::makeBool(true));
   cache_.obj.emplace_back("zoom", Json::makeNumber(1));
   cache_.obj.emplace_back("downloadsDir", Json::makeNull());

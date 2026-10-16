@@ -86,6 +86,28 @@ button {
   border-bottom: 1px solid #808080;
   box-shadow: 0 1px 0 #fff;
 }
+.ow-tab.is-dragging { opacity: 0.5; }
+.ow-linksbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-height: 22px;
+  padding: 1px 4px;
+  background: #c0c0c0;
+  border-bottom: 1px solid #808080;
+  font-size: 11px;
+  overflow: hidden;
+}
+body.no-anim *, body.no-anim *::before, body.no-anim *::after {
+  animation: none !important;
+  transition: none !important;
+}
+body.force-focus *:focus {
+  outline: 2px dotted #000 !important;
+  outline-offset: -2px !important;
+}
+body.no-throb .ow-throbber.is-active { animation: none !important; }
 .ow-tab {
   display: flex;
   align-items: center;

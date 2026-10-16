@@ -163,6 +163,14 @@ bool runCommand(const std::string& name, const Json& arg, const CommandCtx& ctx)
     if (win) win->requestClose();
     return true;
   }
+  if (name == "tab:duplicate") {
+    if (tabs && tab) tabs->duplicate(tab->id);
+    return true;
+  }
+  if (name == "tab:reopen") {
+    if (tabs) tabs->reopenClosed();
+    return true;
+  }
   if (name == "file:open-location") {
     emit("chrome:focus-address");
     return true;
@@ -411,11 +419,70 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
   }
 
   if (ctrl && shift && !alt && k == 't') {
+    // Ctrl+Shift+T: reopen closed tab (falls back to new window).
+    if (tabs && tabs->reopenClosed()) return true;
     app.createMainWindow(true);
     return true;
   }
   if (ctrl && shift && !alt && k == 'w') {
     if (win) win->requestClose();
+    return true;
+  }
+  if (ctrl && shift && !alt && k == 'n') {
+    app.createMainWindow(true);
+    return true;
+  }
+
+  // Ctrl+Tab / Ctrl+Shift+Tab: cycle tabs.
+  if (ctrl && !alt && code == VK_TAB) {
+    if (tabs && tabs->count() > 0) {
+      Tab* cur = tabs->active();
+      if (cur) {
+        int n = tabs->count();
+        int idx = tabs->indexOf(cur->id);
+        int next = shift ? (idx - 1 + n) % n : (idx + 1) % n;
+        int targetId = 0, i = 0;
+        tabs->each([&](Tab* t) {
+          if (i++ == next) targetId = t->id;
+        });
+        if (targetId) tabs->setActive(targetId);
+      }
+    }
+    return true;
+  }
+  // Ctrl+1..8: jump to tab N; Ctrl+9: last tab.
+  if (ctrl && !alt && !shift && k >= '1' && k <= '9') {
+    if (tabs && tabs->count() > 0) {
+      int want = k - '0';
+      int n = tabs->count();
+      int target = (want == 9) ? n : std::min(want, n);
+      int i = 1, targetId = 0;
+      tabs->each([&](Tab* t) {
+        if (i++ == target) targetId = t->id;
+      });
+      if (targetId) tabs->setActive(targetId);
+    }
+    return true;
+  }
+  // Ctrl+U: view source.
+  if (ctrl && !alt && !shift && k == 'u') {
+    viewSourceAsync(ctx);
+    return true;
+  }
+  // Ctrl+Shift+Delete: clear browsing data.
+  if (ctrl && shift && !alt && k == VK_DELETE) {
+    app.openDialog("settings", win);
+    return true;
+  }
+  // F12: developer tools.
+  if (code == VK_F12) {
+    if (tab && tab->client && tab->client->browser() &&
+        tab->client->browser()->GetHost()) {
+      CefWindowInfo wi;
+      CefBrowserSettings bs;
+      tab->client->browser()->GetHost()->ShowDevTools(wi, nullptr, bs,
+                                                      CefPoint());
+    }
     return true;
   }
 

@@ -538,6 +538,16 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
     if (isInvoke) replyNull();
     return;
   }
+  if (channel == "tabs:move") {
+    TabManager* t = needTabs();
+    int64_t src = 0, dst = 0;
+    const Json* sv = arg.isObject() ? arg.find("id") : nullptr;
+    const Json* dv = arg.isObject() ? arg.find("before") : nullptr;
+    if (t && sv && dv && sanitizeId(*sv, src) && sanitizeId(*dv, dst))
+      t->move(static_cast<int>(src), static_cast<int>(dst));
+    if (isInvoke) replyNull();
+    return;
+  }
 
   // ---- navigation ----
   if (channel == "nav:go") {
