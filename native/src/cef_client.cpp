@@ -771,6 +771,46 @@ bool Web98Client::OnCertificateError(CefRefPtr<CefBrowser> browser,
   return true;
 }
 
+bool Web98Client::GetAuthCredentials(CefRefPtr<CefBrowser> browser,
+                                     const CefString& origin_url,
+                                     bool isProxy, const CefString& host,
+                                     int port, const CefString& realm,
+                                     const CefString& scheme,
+                                     CefRefPtr<CefAuthCallback> callback) {
+  if (ctx_.role != BrowserCtx::kTab || detached_) {
+    callback->Cancel();
+    return true;
+  }
+  // Only prompt for server (non-proxy) auth on tabs; proxy auth uses the
+  // same themed dialog but is labelled distinctly.
+  HWND owner = nullptr;
+  if (ctx_.window) owner = ctx_.window->hwnd();
+  else if (ctx_.tabs && ctx_.tabs->window()) owner = ctx_.tabs->window()->hwnd();
+
+  std::string hostPort = str(host);
+  if (port > 0 && port != 80 && port != 443)
+    hostPort += ":" + std::to_string(port);
+
+  std::string title = isProxy ? "Proxy Authentication" : "Authentication Required";
+  std::string msg;
+  if (isProxy) {
+    msg = "The proxy server at " + hostPort + " is asking for your user name "
+          "and password.\n\nSite: " + str(realm) + "\nProxy: " + hostPort;
+  } else {
+    msg = "A user name and password are required to access:\n" +
+          str(origin_url) + "\n\nRealm: " +
+          (str(realm).empty() ? "(none)" : str(realm)) + "\nServer: " + hostPort;
+  }
+
+  std::string user, pass;
+  if (!dialogs::authDialog(owner, title, msg, &user, &pass)) {
+    callback->Cancel();
+    return true;
+  }
+  callback->Continue(user, pass);
+  return true;
+}
+
 void Web98Client::OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
                                             TerminationStatus status,
                                             int error_code,

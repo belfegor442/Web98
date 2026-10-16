@@ -43,6 +43,12 @@ bool promptDialog(HWND owner, const std::string& title,
                   const std::string& message, const std::string& defaultValue,
                   std::string* out);
 
+// Modal username/password prompt for HTTP Basic/Digest/Proxy auth.
+// Returns true on OK (fills *user and *pass), false on cancel.
+bool authDialog(HWND owner, const std::string& title,
+                const std::string& message, std::string* user,
+                std::string* pass);
+
 // Electron clipboard parity (CF_UNICODETEXT).
 void setClipboardText(const std::string& text);
 std::string getClipboardText();

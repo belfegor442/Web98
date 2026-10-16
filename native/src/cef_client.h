@@ -201,6 +201,11 @@ class Web98Client : public CefClient,
                           const CefString& request_url,
                           CefRefPtr<CefSSLInfo> ssl_info,
                           CefRefPtr<CefCallback> callback) override;
+  bool GetAuthCredentials(CefRefPtr<CefBrowser> browser,
+                          const CefString& origin_url, bool isProxy,
+                          const CefString& host, int port,
+                          const CefString& realm, const CefString& scheme,
+                          CefRefPtr<CefAuthCallback> callback) override;
   void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
                                  TerminationStatus status, int error_code,
                                  const CefString& error_string) override;

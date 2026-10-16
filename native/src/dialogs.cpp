@@ -373,6 +373,179 @@ bool promptDialog(HWND owner, const std::string& title,
   return d.ok;
 }
 
+namespace {
+
+constexpr int kAuthOk = 1101;
+constexpr int kAuthCancel = 1102;
+constexpr int kAuthUser = 1103;
+constexpr int kAuthPass = 1104;
+
+struct AuthData {
+  std::wstring message;
+  std::wstring user;
+  std::wstring pass;
+  bool ok = false;
+  HWND userEdit = nullptr;
+  HWND passEdit = nullptr;
+};
+
+void authSetFont(HWND ctl) {
+  ::SendMessageW(ctl, WM_SETFONT,
+                 reinterpret_cast<WPARAM>(::GetStockObject(DEFAULT_GUI_FONT)),
+                 TRUE);
+}
+
+LRESULT CALLBACK AuthProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+  AuthData* d =
+      reinterpret_cast<AuthData*>(::GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+  switch (msg) {
+    case WM_CREATE: {
+      auto* cs = reinterpret_cast<CREATESTRUCTW*>(lp);
+      d = reinterpret_cast<AuthData*>(cs->lpCreateParams);
+      ::SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(d));
+      DWORD style = WS_CHILD | WS_VISIBLE;
+      HWND label = ::CreateWindowExW(
+          0, L"STATIC", d->message.c_str(), style | SS_LEFT, 12, 10, 396, 56,
+          hwnd, reinterpret_cast<HMENU>(1), cs->hInstance, nullptr);
+      HWND userLabel = ::CreateWindowExW(
+          0, L"STATIC", L"User name:", style | SS_LEFT, 12, 74, 90, 20, hwnd,
+          reinterpret_cast<HMENU>(2), cs->hInstance, nullptr);
+      HWND userEdit = ::CreateWindowExW(
+          WS_EX_CLIENTEDGE, L"EDIT", L"",
+          style | ES_AUTOHSCROLL | ES_LEFT | WS_TABSTOP, 12, 94, 396, 24, hwnd,
+          reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAuthUser)),
+          cs->hInstance, nullptr);
+      HWND passLabel = ::CreateWindowExW(
+          0, L"STATIC", L"Password:", style | SS_LEFT, 12, 124, 90, 20, hwnd,
+          reinterpret_cast<HMENU>(3), cs->hInstance, nullptr);
+      HWND passEdit = ::CreateWindowExW(
+          WS_EX_CLIENTEDGE, L"EDIT", L"",
+          style | ES_AUTOHSCROLL | ES_LEFT | WS_TABSTOP | ES_PASSWORD, 12, 144,
+          396, 24, hwnd,
+          reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAuthPass)),
+          cs->hInstance, nullptr);
+      HWND ok = ::CreateWindowExW(
+          0, L"BUTTON", L"OK",
+          style | WS_TABSTOP | BS_DEFPUSHBUTTON, 236, 180, 84, 26, hwnd,
+          reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAuthOk)),
+          cs->hInstance, nullptr);
+      HWND cancel = ::CreateWindowExW(
+          0, L"BUTTON", L"Cancel", style | WS_TABSTOP, 324, 180, 84, 26, hwnd,
+          reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAuthCancel)),
+          cs->hInstance, nullptr);
+      authSetFont(label);
+      authSetFont(userLabel);
+      authSetFont(userEdit);
+      authSetFont(passLabel);
+      authSetFont(passEdit);
+      authSetFont(ok);
+      authSetFont(cancel);
+      d->userEdit = userEdit;
+      d->passEdit = passEdit;
+      ::SetFocus(userEdit);
+      return 0;
+    }
+    case WM_COMMAND: {
+      if (!d) return 0;
+      if (LOWORD(wp) == kAuthOk) {
+        wchar_t ubuf[1024] = {};
+        wchar_t pbuf[1024] = {};
+        ::GetWindowTextW(d->userEdit, ubuf, 1024);
+        ::GetWindowTextW(d->passEdit, pbuf, 1024);
+        d->user = ubuf;
+        d->pass = pbuf;
+        d->ok = true;
+        ::DestroyWindow(hwnd);
+        return 0;
+      }
+      if (LOWORD(wp) == kAuthCancel) {
+        d->ok = false;
+        ::DestroyWindow(hwnd);
+        return 0;
+      }
+      return 0;
+    }
+    case WM_CLOSE:
+      if (d) d->ok = false;
+      ::DestroyWindow(hwnd);
+      return 0;
+    case WM_ACTIVATE:
+      if (LOWORD(wp) != WA_INACTIVE && d && d->userEdit)
+        ::SetFocus(d->userEdit);
+      return 0;
+    default:
+      break;
+  }
+  return ::DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+bool ensureAuthClass() {
+  static bool done = false;
+  static bool ok = false;
+  if (done) return ok;
+  done = true;
+  WNDCLASSEXW wc{};
+  wc.cbSize = sizeof(wc);
+  wc.lpfnWndProc = AuthProc;
+  wc.hInstance = ::GetModuleHandleW(nullptr);
+  wc.hCursor = ::LoadCursorW(nullptr, IDC_ARROW);
+  wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
+  wc.lpszClassName = L"Web98Auth";
+  ok = ::RegisterClassExW(&wc) != 0 ||
+       ::GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+  return ok;
+}
+
+}  // namespace
+
+bool authDialog(HWND owner, const std::string& title,
+                const std::string& message, std::string* user,
+                std::string* pass) {
+  if (!ensureAuthClass()) return false;
+  AuthData d;
+  d.message = toWide(message);
+  std::wstring wtitle = toWide(title.empty() ? "Web98" : title);
+
+  const int w = 430, h = 250;
+  int x = 0, y = 0;
+  if (owner) {
+    RECT rc{};
+    ::GetWindowRect(owner, &rc);
+    x = rc.left + ((rc.right - rc.left) - w) / 2;
+    y = rc.top + ((rc.bottom - rc.top) - h) / 2;
+  } else {
+    x = (::GetSystemMetrics(SM_CXSCREEN) - w) / 2;
+    y = (::GetSystemMetrics(SM_CYSCREEN) - h) / 2;
+  }
+
+  HWND hwnd = ::CreateWindowExW(WS_EX_DLGMODALFRAME, L"Web98Auth",
+                                 wtitle.c_str(),
+                                 WS_POPUP | WS_CAPTION | WS_SYSMENU, x, y, w,
+                                 h, owner, nullptr,
+                                 ::GetModuleHandleW(nullptr), &d);
+  if (!hwnd) return false;
+  ::ShowWindow(hwnd, SW_SHOW);
+  ::UpdateWindow(hwnd);
+  if (owner) ::EnableWindow(owner, FALSE);
+
+  MSG msg;
+  while (::IsWindow(hwnd) && ::GetMessageW(&msg, nullptr, 0, 0)) {
+    if (!::IsDialogMessageW(hwnd, &msg)) {
+      ::TranslateMessage(&msg);
+      ::DispatchMessageW(&msg);
+    }
+  }
+  if (owner) {
+    ::EnableWindow(owner, TRUE);
+    ::SetActiveWindow(owner);
+  }
+  if (d.ok) {
+    if (user) *user = toUtf8(d.user);
+    if (pass) *pass = toUtf8(d.pass);
+  }
+  return d.ok;
+}
+
 void setClipboardText(const std::string& text) {
   if (!::OpenClipboard(nullptr)) return;
   ::EmptyClipboard();
