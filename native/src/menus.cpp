@@ -473,9 +473,11 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
     viewSourceAsync(ctx);
     return true;
   }
-  // Ctrl+Shift+Delete: clear browsing data.
+  // Ctrl+Shift+Delete: clear browsing data (privacy pane).
   if (ctrl && shift && !alt && k == VK_DELETE) {
-    app.openDialog("settings", win);
+    Json payload = Json::makeObject();
+    payload.obj.emplace_back("pane", Json::makeString("privacy"));
+    app.openDialog("settings", win, &payload);
     return true;
   }
   // F12: developer tools.

@@ -232,15 +232,27 @@
         var pending = null;   // edited copy, applied on Apply/OK
 
         /* --- tabs --- */
+        function selectPane(name) {
+          var target = null;
+          document.querySelectorAll('.dlg-tab').forEach(function (tab) {
+            if (tab.dataset.pane === name) target = tab;
+          });
+          if (!target) return;
+          document.querySelectorAll('.dlg-tab').forEach(function (t) {
+            t.classList.toggle('is-active', t === target);
+          });
+          ['general', 'security', 'privacy', 'content', 'advanced'].forEach(function (n) {
+            document.getElementById('pane-' + n).hidden = n !== name;
+          });
+        }
         document.querySelectorAll('.dlg-tab').forEach(function (tab) {
           tab.addEventListener('click', function () {
-            document.querySelectorAll('.dlg-tab').forEach(function (t) {
-              t.classList.toggle('is-active', t === tab);
-            });
-            ['general', 'security', 'privacy', 'content', 'advanced'].forEach(function (name) {
-              document.getElementById('pane-' + name).hidden = name !== tab.dataset.pane;
-            });
+            selectPane(tab.dataset.pane);
           });
+        });
+        /* Ctrl+Shift+Delete and similar open us on a specific pane. */
+        dlg.payload(function (p) {
+          if (p && typeof p.pane === 'string') selectPane(p.pane);
         });
 
         /* --- general --- */
