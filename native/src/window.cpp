@@ -1,6 +1,7 @@
 #include "window.h"
 
 #include <windows.h>
+#include <shellapi.h>
 
 #include <algorithm>
 #include <map>
@@ -161,6 +162,7 @@ bool MainWindow::create(const SessionWindow* session, bool show) {
                     CW_USEDEFAULT, w, h, nullptr, nullptr,
                     ::GetModuleHandleW(nullptr), this);
   if (!hwnd_) return false;
+  ::DragAcceptFiles(hwnd_, TRUE);
 
   tabs_ = std::make_unique<TabManager>(this, [this](const std::string& ch,
                                                     const Json& p) {
@@ -426,6 +428,27 @@ LRESULT CALLBACK MainWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp,
     }
     case WM_DESTROY: {
       if (self) AppCore::get().retireMainWindow(self);
+      return 0;
+    }
+    case WM_DROPFILES: {
+      if (self && self->tabs_) {
+        HDROP drop = reinterpret_cast<HDROP>(wp);
+        UINT n = ::DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+        // First file activates; the rest open as background tabs.
+        for (UINT i = 0; i < n; ++i) {
+          UINT len = ::DragQueryFileW(drop, i, nullptr, 0);
+          if (!len) continue;
+          std::wstring buf(len + 1, L'\0');
+          ::DragQueryFileW(drop, i, &buf[0], len + 1);
+          buf.resize(len);
+          std::string path = toUtf8(buf);
+          if (path.empty()) continue;
+          std::string url = pathToFileUrl(path);
+          if (i == 0) self->tabs_->create(url, true);
+          else self->tabs_->createBackground(url);
+        }
+      }
+      ::DragFinish(reinterpret_cast<HDROP>(wp));
       return 0;
     }
     case WM_NCDESTROY:
