@@ -25,6 +25,7 @@ struct Tab {
   bool loading = false;
   double progress = 0.0;
   double zoom = 1.0;
+  bool pinned = false;
   int progressBucket = -1;
   bool suppressCommit = false;
   bool errorPageShown = false;
@@ -69,6 +70,8 @@ class TabManager {
   Tab* reopenClosed();
   // Move tab `id` so it sits immediately before tab `beforeId`.
   void move(int id, int beforeId);
+  // Toggle the pinned state of tab `id`; pinned tabs sort to the front.
+  void togglePin(int id);
   bool load(Tab* tab, const std::string& url);
   void setBounds(int x, int y, int w, int h);
   void setPopupHidden(bool hidden);

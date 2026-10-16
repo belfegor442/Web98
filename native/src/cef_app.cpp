@@ -154,6 +154,7 @@ std::string buildShim(const char* kind) {
     'settings:pickDownloadsDir', 'settings:revoke',
     'settings:set',
     'tabs:activate', 'tabs:close', 'tabs:create', 'tabs:list', 'tabs:move',
+    'tabs:pin',
     'win:close', 'win:isMax', 'win:max', 'win:min', 'win:title',
     'window:close', 'window:open'
   ];

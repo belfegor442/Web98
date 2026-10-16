@@ -125,6 +125,15 @@ body.no-throb .ow-throbber.is-active { animation: none !important; }
   padding-bottom: 2px;
   font-weight: 700;
 }
+.ow-tab.is-pinned {
+  min-width: 32px;
+  max-width: 32px;
+  padding: 0 6px;
+}
+.ow-tab.is-pinned .ow-tab__title,
+.ow-tab.is-pinned .ow-tab__close {
+  display: none;
+}
 .ow-tab__icon {
   width: 14px;
   height: 14px;

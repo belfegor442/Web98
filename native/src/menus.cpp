@@ -167,6 +167,10 @@ bool runCommand(const std::string& name, const Json& arg, const CommandCtx& ctx)
     if (tabs && tab) tabs->duplicate(tab->id);
     return true;
   }
+  if (name == "tab:pin") {
+    if (tabs && tab) tabs->togglePin(tab->id);
+    return true;
+  }
   if (name == "tab:reopen") {
     if (tabs) tabs->reopenClosed();
     return true;

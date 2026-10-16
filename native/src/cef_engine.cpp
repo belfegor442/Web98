@@ -84,6 +84,7 @@ Json TabManager::list() const {
     o.obj.emplace_back("favicon", Json::makeString(t->favicon));
     o.obj.emplace_back("loading", Json::makeBool(t->loading));
     o.obj.emplace_back("progress", Json::makeNumber(t->progress));
+    o.obj.emplace_back("pinned", Json::makeBool(t->pinned));
     o.obj.emplace_back("active", Json::makeBool(t->id == activeId_));
     out.arr.push_back(std::move(o));
   }
@@ -275,6 +276,22 @@ void TabManager::move(int id, int beforeId) {
   tabs_.erase(tabs_.begin() + from);
   if (from < to) --to;
   tabs_.insert(tabs_.begin() + to, std::move(item));
+  emitTabs();
+}
+
+void TabManager::togglePin(int id) {
+  int idx = indexOf(id);
+  if (idx < 0) return;
+  std::unique_ptr<Tab> item = std::move(tabs_[idx]);
+  tabs_.erase(tabs_.begin() + idx);
+  item->pinned = !item->pinned;
+  // Pinned tabs live at the front of the strip, preserving their relative
+  // order among pinned tabs; unpinned tabs go back after the pinned block.
+  size_t insert = 0;
+  if (!item->pinned) {
+    while (insert < tabs_.size() && tabs_[insert]->pinned) ++insert;
+  }
+  tabs_.insert(tabs_.begin() + insert, std::move(item));
   emitTabs();
 }
 

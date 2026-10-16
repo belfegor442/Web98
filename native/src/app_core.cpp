@@ -549,7 +549,15 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
     return;
   }
 
-  // ---- navigation ----
+  if (channel == "tabs:pin") {
+    TabManager* t = needTabs();
+    int64_t src = 0;
+    const Json* sv = arg.isObject() ? arg.find("id") : nullptr;
+    if (t && sv && sanitizeId(*sv, src))
+      t->togglePin(static_cast<int>(src));
+    if (isInvoke) replyNull();
+    return;
+  }
   if (channel == "nav:go") {
     TabManager* t = needTabs();
     if (!t) {

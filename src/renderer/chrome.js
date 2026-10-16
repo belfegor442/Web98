@@ -167,6 +167,7 @@
         { cmd: 'file:close-tab', label: 'Close Tab', hint: 'Ctrl+W' },
         { cmd: 'tab:reopen', label: 'Reopen Closed Tab', hint: 'Ctrl+Shift+T' },
         { cmd: 'tab:duplicate', label: 'Duplicate Tab' },
+        { cmd: 'tab:pin', label: 'Pin/Unpin Tab' },
         { cmd: 'file:close-window', label: 'Close Window', hint: 'Ctrl+Shift+W' },
         { sep: true },
         { cmd: 'file:exit', label: 'Exit' }
@@ -555,7 +556,7 @@
     }
     tabs.forEach(function (t, i) {
       var row = rows[i];
-      var cls = 'ow-tab' + (t.active ? ' is-active' : '') + (t.loading ? ' is-loading' : '');
+      var cls = 'ow-tab' + (t.active ? ' is-active' : '') + (t.loading ? ' is-loading' : '') + (t.pinned ? ' is-pinned' : '');
       if (row.el.className !== cls) row.el.className = cls;
       row.el.title = t.title || t.url;
       var spinCls = 'ow-tab__spinner' + (t.loading ? ' is-active' : '');
@@ -575,6 +576,11 @@
     showCtxMenu(e.clientX, e.clientY, [
       { label: 'New Tab', act: function () { invoke('tabs:create', {}); } },
       { sep: true },
+      {
+        label: t.pinned ? 'Unpin Tab' : 'Pin Tab', act: function () {
+          invoke('tabs:pin', { id: t.id });
+        }
+      },
       {
         label: 'Close Tab', act: function () {
           invoke('tabs:close', { id: t.id });
