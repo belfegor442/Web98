@@ -792,9 +792,16 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
       }
       BookmarkIn patch;
       Json raw = Json::makeObject();
+      bool hasParent = false;
+      int64_t newParent = 0;
       if (arg.isObject()) {
         if (arg.find("name")) raw.obj.emplace_back("name", *arg.find("name"));
         if (arg.find("url")) raw.obj.emplace_back("url", *arg.find("url"));
+        const Json* pv = arg.find("parent");
+        if (pv && pv->isNumber()) {
+          hasParent = true;
+          newParent = static_cast<int64_t>(pv->num);
+        }
         raw.obj.emplace_back("parent", Json::makeNumber(0));
       }
       if (!sanitizeBookmark(raw, patch)) {
@@ -802,6 +809,8 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
         return;
       }
       storage_.updateBookmark(bid, patch.name, patch.url);
+      // Optional: move the bookmark into a different folder (append at end).
+      if (hasParent) storage_.moveBookmark(bid, newParent, 999999);
       broadcast("bookmarks:changed", Json::makeNull());
       BookmarkRow out;
       if (storage_.getBookmark(bid, out)) reply(bookmarkToJson(out));

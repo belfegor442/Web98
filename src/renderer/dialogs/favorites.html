@@ -54,6 +54,7 @@
           <div class="col side-btns">
             <button class="w98-btn" id="btn-newfolder">New Folder</button>
             <button class="w98-btn" id="btn-rename" disabled>Rename...</button>
+            <button class="w98-btn" id="btn-moveto" disabled>Move To...</button>
             <button class="w98-btn" id="btn-delete" disabled>Delete</button>
             <button class="w98-btn" id="btn-import">Import...</button>
             <button class="w98-btn" id="btn-export">Export...</button>
@@ -79,6 +80,7 @@
         var edName = document.getElementById('ed-name');
         var edLabel = document.getElementById('ed-label');
         var btnRename = document.getElementById('btn-rename');
+        var btnMoveto = document.getElementById('btn-moveto');
         var btnDelete = document.getElementById('btn-delete');
         var all = [];
         var mode = null; // 'rename' | 'newfolder'
@@ -87,6 +89,7 @@
           onSelect: function (item) {
             var has = !!item;
             btnRename.disabled = !has;
+            btnMoveto.disabled = !has;
             btnDelete.disabled = !has;
             urlLine.textContent = item ? (item.url || '(folder)') : '';
             urlLine.title = item && item.url ? item.url : '';
@@ -187,6 +190,52 @@
           openEditor('newfolder');
         });
         btnRename.addEventListener('click', function () { openEditor('rename'); });
+        btnMoveto.addEventListener('click', function () {
+          var item = sel.selected();
+          if (!item) return;
+          // Folder picker: root ("Favorites") + every folder (no url).
+          var folders = all.filter(function (b) { return !b.url; });
+          var ov = document.createElement('div');
+          ov.className = 'editor is-open';
+          ov.style.zIndex = '5';
+          var lbl = document.createElement('label');
+          lbl.textContent = 'Move to:';
+          var selEl = document.createElement('select');
+          selEl.className = 'w98-input';
+          var optRoot = document.createElement('option');
+          optRoot.value = '0';
+          optRoot.textContent = 'Favorites';
+          selEl.appendChild(optRoot);
+          folders.forEach(function (f) {
+            if (f.id === item.id) return; // can't move a folder into itself
+            var o = document.createElement('option');
+            o.value = String(f.id);
+            o.textContent = f.name;
+            if ((item.parent || 0) === f.id) o.selected = true;
+            selEl.appendChild(o);
+          });
+          var ok = document.createElement('button');
+          ok.className = 'w98-btn small';
+          ok.textContent = 'OK';
+          var cancel = document.createElement('button');
+          cancel.className = 'w98-btn small';
+          cancel.textContent = 'Cancel';
+          ov.appendChild(lbl);
+          ov.appendChild(selEl);
+          ov.appendChild(ok);
+          ov.appendChild(cancel);
+          document.querySelector('.dlg-body').appendChild(ov);
+          function done() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+          cancel.addEventListener('click', done);
+          selEl.addEventListener('keydown', function (e) { if (e.key === 'Escape') done(); });
+          ok.addEventListener('click', function () {
+            var parent = parseInt(selEl.value, 10) || 0;
+            dlg.invoke('bookmarks:update', { id: item.id, name: item.name, url: item.url, parent: parent });
+            done();
+            setTimeout(load, 120);
+          });
+          selEl.focus();
+        });
         btnDelete.addEventListener('click', function () {
           var item = sel.selected();
           if (!item) return;
