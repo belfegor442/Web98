@@ -228,6 +228,7 @@
         },
         { cmd: 'view:source', label: 'Source' },
         { cmd: 'view:page-info', label: 'Page Info...' },
+        { cmd: 'view:devtools', label: 'Developer Tools', hint: 'F12' },
         { sep: true },
         { cmd: 'view:fullscreen', label: 'Full Screen', hint: 'F11' }
       ]
@@ -496,6 +497,10 @@
   });
   $('btn-go').addEventListener('click', go);
   $('btn-links').addEventListener('click', function () { togglePanel('favorites'); });
+  // Clicking the security-zone indicator opens Page Info (classic IE behavior).
+  $('zone').addEventListener('click', function () {
+    invoke('app:command', { name: 'view:page-info' });
+  });
 
   /* ------------------------------ tabs ------------------------------------ */
   function byTabId(id) {
@@ -623,6 +628,24 @@
           invoke('tabs:activate', { id: t.id });
           invoke('nav:reload');
         }
+      },
+      { sep: true },
+      {
+        label: 'Duplicate Tab', act: function () {
+          // Duplicate targets the active tab, so focus this one first.
+          invoke('tabs:activate', { id: t.id });
+          invoke('app:command', { name: 'tab:duplicate' });
+        }
+      },
+      {
+        label: 'Reopen Closed Tab', act: function () {
+          invoke('app:command', { name: 'tab:reopen' });
+        }
+      },
+      {
+        label: 'Add to Favorites...', act: function () {
+          openAddFavorite(t.url, t.title);
+        }
       }
     ]);
   }
@@ -715,10 +738,16 @@
   $('sidepanel-close').addEventListener('click', function () { togglePanel(sidePanelMode); });
 
   /* ----------------------------- find bar --------------------------------- */
+  var lastFindTerm = '';
+  var lastFindCase = false;
   function openFind() {
     $('findbar').classList.add('is-open');
+    // Restore the previous search term + Match-case (IE behavior).
+    $('find-input').value = lastFindTerm;
+    $('find-case').checked = lastFindCase;
     $('find-input').focus();
     $('find-input').select();
+    if (lastFindTerm) findAction('find');
     pushBounds();
   }
   api.on('chrome:find', openFind);
@@ -730,6 +759,8 @@
   }
   $('find-close').addEventListener('click', closeFind);
   function findAction(action) {
+    lastFindTerm = $('find-input').value;
+    lastFindCase = $('find-case').checked;
     invoke('app:find', {
       action: action,
       term: $('find-input').value,
@@ -768,6 +799,40 @@
       ? 'Popup blocked (1)'
       : 'Popups blocked (' + n + ')';
     setTimeout(function () { $('status').textContent = 'Done'; }, 3000);
+  });
+  api.on('chrome:status', function (d) {
+    var txt = (d && d.text) || '';
+    $('status').textContent = txt || 'Done';
+  });
+
+  /* --------------------------- download feedback -------------------------- */
+  // Show progress while downloading and a brief notice on completion/failure.
+  var dlSeen = {};
+  var dlTimer = null;
+  function dlNotice(msg) {
+    $('status').textContent = msg;
+    if (dlTimer) clearTimeout(dlTimer);
+    dlTimer = setTimeout(function () { $('status').textContent = 'Done'; }, 4000);
+  }
+  api.on('downloads', function (list) {
+    if (!Array.isArray(list)) return;
+    var active = false;
+    list.forEach(function (d) {
+      if (!d || d.id == null) return;
+      var prev = dlSeen[d.id];
+      dlSeen[d.id] = d.state;
+      if (d.state === 'progressing') {
+        active = true;
+        if (prev !== 'progressing') dlNotice('Downloading ' + (d.filename || d.url || '') + '...');
+      } else if (prev && prev !== d.state) {
+        // State transition from a previous known state.
+        if (d.state === 'completed') dlNotice('Download complete: ' + (d.filename || d.url || ''));
+        else if (d.state === 'cancelled') dlNotice('Download cancelled: ' + (d.filename || d.url || ''));
+        else if (d.state === 'interrupted') dlNotice('Download interrupted: ' + (d.filename || d.url || ''));
+      }
+    });
+    // Reflect ongoing activity with the progress affordance.
+    $('progress').classList.toggle('is-active', active);
   });
 
   /* --------------------------- context menu -------------------------------- */
@@ -903,8 +968,11 @@
   }
 
   /* -------------------------- add favorite --------------------------------- */
-  function openAddFavorite() {
-    if (!nav.url || !/^https?:|^file:/i.test(nav.url)) {
+  function openAddFavorite(url, title) {
+    // Default to the active tab's page; allow an explicit tab (context menu).
+    var favUrl = url || nav.url;
+    var favTitle = title || nav.title;
+    if (!favUrl || !/^https?:|^file:/i.test(favUrl)) {
       openMini({
         title: 'Add Favorite',
         icon: '../../assets/ie5/assets/favorites.png',
@@ -922,18 +990,18 @@
         title: 'Add Favorite',
         icon: '../../assets/ie5/assets/favorites.png',
         bodyHtml:
-          '<label>Name:</label><input type="text" id="fav-name" value="' + escapeHtml(nav.title || nav.url) + '" />' +
+          '<label>Name:</label><input type="text" id="fav-name" value="' + escapeHtml(favTitle || favUrl) + '" />' +
           '<label>Folder:</label><select id="fav-folder"><option value="0">Favorites</option>' + opts + '</select>' +
-          '<p style="color:#404040">' + escapeHtml(nav.url) + '</p>',
+          '<p style="color:#404040">' + escapeHtml(favUrl) + '</p>',
         buttons: [
           { label: 'OK', value: 'ok', default: true },
           { label: 'Cancel', value: null }
         ],
         onResult: function (v) {
           if (v !== 'ok') return;
-          var name = (document.getElementById('fav-name') || {}).value || nav.url;
+          var name = (document.getElementById('fav-name') || {}).value || favUrl;
           var folder = parseInt((document.getElementById('fav-folder') || {}).value || '0', 10) || 0;
-          invoke('bookmarks:add', { name: name, url: nav.url, parent: folder });
+          invoke('bookmarks:add', { name: name, url: favUrl, parent: folder });
         }
       });
       void dlg;

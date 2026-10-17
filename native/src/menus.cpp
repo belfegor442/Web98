@@ -545,6 +545,11 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
       case 's':
         savePageTab(tab);
         return true;
+      case 'e':
+      case 'k':
+        // Ctrl+E / Ctrl+K: open the search base (same as the Search button).
+        runCommand("nav:search", Json::makeNull(), ctx);
+        return true;
       case VK_OEM_PLUS:
       case '=':
       case '+': {
@@ -574,6 +579,10 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
       case '0':
         if (tabs) tabs->setZoom(1.0);
         app.setSetting("zoom", Json::makeNumber(1.0));
+        if (tab && !tab->url.empty()) {
+          std::string origin = originOf(tab->url);
+          if (!origin.empty() && origin != "file://") app.setSiteZoom(origin, 1.0);
+        }
         return true;
       default:
         return false;
@@ -720,8 +729,23 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
     emit("chrome:focus-address");
     return true;
   }
+  if (alt && !ctrl && code == VK_HOME) {
+    // Alt+Home (IE classic): go to the homepage.
+    if (tabs) tabs->load(tab, app.settingsModel().getString("homepage", homepageUrl()));
+    return true;
+  }
+  if (code == VK_F1) {
+    // F1 = Help (About dialog).
+    app.openDialog("about", win);
+    return true;
+  }
   if (code == VK_F5) {
-    if (auto h = hostOf()) h->Reload();
+    if (ctrl) {
+      // Ctrl+F5 = hard reload (ignore cache).
+      if (auto h = hostOf()) h->ReloadIgnoreCache();
+    } else {
+      if (auto h = hostOf()) h->Reload();
+    }
     return true;
   }
   if (code == VK_F3) {

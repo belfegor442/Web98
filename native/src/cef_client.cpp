@@ -496,6 +496,18 @@ void Web98Client::OnFindResult(CefRefPtr<CefBrowser> browser, int identifier,
     SendEvent("chrome:find-result", payload);
 }
 
+/* -------------------------------- status ---------------------------------- */
+
+void Web98Client::OnStatusMessage(CefRefPtr<CefBrowser> browser,
+                                  const CefString& value) {
+  // Classic IE: show the hovered-link URL (or a page status string) in the
+  // status bar. Only forward from tab browsers; an empty value means clear.
+  if (ctx_.role != BrowserCtx::kTab || !ctx_.window) return;
+  Json payload = Json::makeObject();
+  payload.obj.emplace_back("text", Json::makeString(value.ToString()));
+  ctx_.window->emit("chrome:status", payload);
+}
+
 /* -------------------------------- focus ----------------------------------- */
 
 bool Web98Client::OnSetFocus(CefRefPtr<CefBrowser> browser, FocusSource source) {

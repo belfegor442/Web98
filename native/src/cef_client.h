@@ -126,6 +126,8 @@ class Web98Client : public CefClient,
                               bool fullscreen) override;
   void OnLoadingProgressChange(CefRefPtr<CefBrowser> browser,
                                double progress) override;
+  void OnStatusMessage(CefRefPtr<CefBrowser> browser,
+                       const CefString& value) override;
 
   // --- CefDownloadHandler ---------------------------------------------------
   bool CanDownload(CefRefPtr<CefBrowser> browser, const CefString& url,

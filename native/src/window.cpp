@@ -88,6 +88,14 @@ LRESULT CALLBACK ChildProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             double delta = static_cast<short>(HIWORD(wp)) > 0 ? 0.25 : -0.25;
             double z = std::min(3.0, std::max(0.25, tab->zoom + delta));
             mw->tabs()->setZoom(tab, z);
+            // Persist globally + per-site so the zoom survives navigation and
+            // the View>Text Size radio stays in sync (parity with the +/- keys).
+            AppCore::get().setSetting("zoom", Json::makeNumber(z));
+            if (!tab->url.empty()) {
+              std::string origin = originOf(tab->url);
+              if (!origin.empty() && origin != "file://")
+                AppCore::get().setSiteZoom(origin, z);
+            }
             return 0;
           }
         }

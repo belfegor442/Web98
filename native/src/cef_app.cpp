@@ -165,6 +165,7 @@ std::string buildShim(const char* kind) {
     'chrome:add-favorite', 'chrome:find', 'chrome:find-next', 'chrome:find-prev',
     'chrome:find-result', 'chrome:focus-address',
     'chrome:popup-blocked',
+    'chrome:status',
     'chrome:tab-focused',
     'ctx',
     'downloads',

@@ -73,8 +73,10 @@
         </div>
       </div>
     </div>
+    <script src="dlg.js"></script>
     <script>
       (function () {
+        if (window.dlg) window.dlg.init();
         var w = window.web98;
         if (!w) return;
         var addrEl = document.getElementById('addr');
