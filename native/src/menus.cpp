@@ -712,6 +712,19 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
     }
     return true;
   }
+  // F7: caret browsing (toggle a visible text caret in the page).
+  if (code == VK_F7) {
+    auto h = hostOf();
+    if (h && h->GetMainFrame()) {
+      const std::string js =
+          "(function(){var on=!window.__web98Caret;window.__web98Caret=on;"
+          "try{document.designMode=on?'on':'off';}catch(e){}"
+          "if(on){var b=document.body;if(b){b.focus();}}"
+          "return on;})()";
+      h->GetMainFrame()->ExecuteJavaScript(js, h->GetMainFrame()->GetURL(), 0);
+    }
+    return true;
+  }
 
   if (alt && !ctrl && code == VK_LEFT) {
     if (auto h = hostOf()) {

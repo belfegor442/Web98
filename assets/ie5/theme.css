@@ -161,6 +161,10 @@ body {
   background: #4160c9;
   color: #fff;
 }
+.ow-menu__item.is-kbfocus:not(.is-disabled) {
+  background: #4160c9;
+  color: #fff;
+}
 .ow-menu__item.is-disabled {
   color: var(--ow-face-dark);
 }

@@ -266,6 +266,7 @@
       wrap.setAttribute('data-menu', menu.id);
       var label = el('button', 'ow-menu__label', wrap);
       label.textContent = menu.label;
+      label.tabIndex = 0;
       var drop = el('div', 'ow-menu__dropdown', wrap);
       label.addEventListener('mousedown', function (e) {
         e.preventDefault();
@@ -360,6 +361,92 @@
     if (item.emitDialog === 'add-favorite') { openAddFavorite(); return; }
     if (item.cmd) invoke('app:command', { name: item.cmd, arg: item.arg });
   }
+
+  /* --------------------------- menu keyboard ------------------------------ */
+  // Alt / F10 focus the menu bar; Left/Right move across menus, Up/Down move
+  // within a menu, Enter/Space activate, Escape closes, Alt+letter jumps via
+  // the label's first-letter mnemonic.
+  var menuKb = { top: -1, item: -1 };
+  function menuWraps() {
+    return Array.prototype.slice.call(document.querySelectorAll('#menubar .ow-menu'));
+  }
+  function menuItemsOf(wrap) {
+    if (!wrap) return [];
+    var drop = wrap.querySelector('.ow-menu__dropdown');
+    if (!drop) return [];
+    return Array.prototype.slice.call(drop.querySelectorAll('.ow-menu__item'))
+      .filter(function (it) { return !it.classList.contains('is-disabled'); });
+  }
+  function clearKbItem(items) {
+    items.forEach(function (it) { it.classList.remove('is-kbfocus'); });
+  }
+  function focusKbItem(items, idx) {
+    if (!items.length) return;
+    clearKbItem(items);
+    if (idx < 0) idx = items.length - 1;
+    if (idx >= items.length) idx = 0;
+    menuKb.item = idx;
+    items[idx].classList.add('is-kbfocus');
+    if (items[idx].scrollIntoView) items[idx].scrollIntoView({ block: 'nearest' });
+  }
+  function focusTopMenu(i, openIt) {
+    var wraps = menuWraps();
+    if (!wraps.length) return;
+    if (i < 0) i = wraps.length - 1;
+    if (i >= wraps.length) i = 0;
+    menuKb.top = i;
+    wraps[i].querySelector('.ow-menu__label').focus();
+    if (openIt) {
+      openMenu(wraps[i]);
+      focusKbItem(menuItemsOf(wraps[i]), 0);
+    }
+  }
+  function menuMnemonic(letter) {
+    var wraps = menuWraps();
+    for (var i = 0; i < wraps.length; i++) {
+      var lbl = wraps[i].querySelector('.ow-menu__label');
+      if (lbl && lbl.textContent.charAt(0).toLowerCase() === letter) {
+        focusTopMenu(i, true);
+        return true;
+      }
+    }
+    return false;
+  }
+  document.addEventListener('keydown', function (e) {
+    // Enter menu-bar keyboard mode with F10.
+    if (e.key === 'F10') {
+      e.preventDefault();
+      focusTopMenu(menuKb.top < 0 ? 0 : menuKb.top, true);
+      return;
+    }
+    // Alt+letter mnemonic (no other modifiers).
+    if (e.altKey && !e.ctrlKey && !e.shiftKey && e.key && e.key.length === 1 &&
+        /[a-z]/i.test(e.key)) {
+      if (menuMnemonic(e.key.toLowerCase())) e.preventDefault();
+      return;
+    }
+    // While a menu is open via keyboard, drive it with the arrow keys.
+    if (menuKb.top < 0 || !floatOpen()) return;
+    var wraps = menuWraps();
+    var wrap = wraps[menuKb.top];
+    if (e.key === 'ArrowLeft') { e.preventDefault(); focusTopMenu(menuKb.top - 1, true); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); focusTopMenu(menuKb.top + 1, true); }
+    else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      var items = menuItemsOf(wrap);
+      focusKbItem(items, menuKb.item < 0 ? 0 : menuKb.item + 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      var itemsUp = menuItemsOf(wrap);
+      focusKbItem(itemsUp, menuKb.item < 0 ? itemsUp.length - 1 : menuKb.item - 1);
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      var cur = menuItemsOf(wrap)[menuKb.item];
+      if (cur) { e.preventDefault(); cur.click(); menuKb.top = -1; menuKb.item = -1; }
+    } else if (e.key === 'Escape') {
+      menuKb.top = -1;
+      menuKb.item = -1;
+    }
+  });
 
   /* ------------------------------ toolbar --------------------------------- */
   var TOOLBAR = [
