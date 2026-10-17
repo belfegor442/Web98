@@ -88,6 +88,10 @@
               <button class="w98-btn small" id="btn-dl-browse">Browse...</button>
               <button class="w98-btn small" id="btn-dl-default">Use Default</button>
             </div>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-askwhere" />
+              Always ask where to save each file
+            </label>
           </fieldset>
         </div>
 
@@ -306,6 +310,7 @@
         var ckStatus = document.getElementById('ck-status');
         var ckRestore = document.getElementById('ck-restore');
         var inDl = document.getElementById('in-dl');
+        var ckAskWhere = document.getElementById('ck-askwhere');
         var ckPopup = document.getElementById('ck-popup');
         var ckAnim = document.getElementById('ck-anim');
         var ckFocus = document.getElementById('ck-focus');
@@ -326,6 +331,7 @@
           pending.linksBar = ckLinks.checked;
           pending.throbber = ckThrob.checked;
           pending.downloadsDir = inDl.value.trim() || null;
+          pending.alwaysAskWhere = ckAskWhere.checked;
           var af = {};
           afIds.forEach(function (f) {
             var v = document.getElementById('af-' + f).value.trim();
@@ -354,6 +360,7 @@
           ckLinks.checked = !!pending.linksBar;
           ckThrob.checked = pending.throbber !== false;
           inDl.value = pending.downloadsDir || '';
+          ckAskWhere.checked = !!pending.alwaysAskWhere;
           var af = pending.autofill || {};
           afIds.forEach(function (f) {
             document.getElementById('af-' + f).value = af[f] || '';
@@ -451,6 +458,7 @@
             linksBar: pending.linksBar,
             throbber: pending.throbber,
             downloadsDir: pending.downloadsDir,
+            alwaysAskWhere: pending.alwaysAskWhere,
             autofill: pending.autofill
           };
           return dlg.invoke('settings:set', patch).then(function (s) {

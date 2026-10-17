@@ -59,6 +59,7 @@ class Downloads {
   // Open/show: dangerous-extension warning is the UI's job; these only
   // return the path (empty when unavailable).
   std::string PathFor(int id) const;
+  void SetPath(int id, const std::string& path);  // override the save path
   std::string StateFor(int id) const;  // "" when unknown
   const std::vector<DownloadRec>& list() const { return items_; }
   int ActiveCount() const;

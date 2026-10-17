@@ -144,6 +144,14 @@ std::string Downloads::PathFor(int id) const {
   return std::string();
 }
 
+void Downloads::SetPath(int id, const std::string& path) {
+  DownloadRec* r = find(id);
+  if (r && !path.empty()) {
+    r->savePath = path;
+    r->filename = pathBaseName(path);
+  }
+}
+
 std::string Downloads::StateFor(int id) const {
   for (const auto& r : items_)
     if (r.id == id) return r.state;

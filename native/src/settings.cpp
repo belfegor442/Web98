@@ -238,9 +238,9 @@ bool sanitizeSettingsPatchValue(const std::string& key, const Json& in, Json& ou
     if (in.isArray()) return reject();
     return false;  // non-array silently ignored (JS: no out, no rejected)
   }
-  if (key == "animEnabled" || key == "focusOutlines" || key == "linksBar" ||
-      key == "popupBlocker" || key == "sessionRestore" || key == "statusBar" ||
-      key == "throbber" || key == "toolbarVisible") {
+  if (key == "alwaysAskWhere" || key == "animEnabled" || key == "focusOutlines" ||
+      key == "linksBar" || key == "popupBlocker" || key == "sessionRestore" ||
+      key == "statusBar" || key == "throbber" || key == "toolbarVisible") {
     if (in.isBool()) {
       out = in;
       return true;
@@ -410,6 +410,7 @@ void SettingsModel::initEmpty() {
   cache_.obj.emplace_back("searchEngine", Json::makeString("DuckDuckGo"));
   cache_.obj.emplace_back("engines", defaultEnginesJson());
   cache_.obj.emplace_back("animEnabled", Json::makeBool(true));
+  cache_.obj.emplace_back("alwaysAskWhere", Json::makeBool(false));
   cache_.obj.emplace_back("focusOutlines", Json::makeBool(false));
   cache_.obj.emplace_back("linksBar", Json::makeBool(false));
   cache_.obj.emplace_back("popupBlocker", Json::makeBool(true));

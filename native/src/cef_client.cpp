@@ -468,9 +468,23 @@ bool Web98Client::OnBeforeDownload(CefRefPtr<CefBrowser> browser,
     }
   }
   std::string path;
-  AppCore::get().registerCefDownload(download_item->GetId(),
-                                     str(download_item->GetURL()),
-                                     str(suggested_name), &path);
+  int dlId = AppCore::get().registerCefDownload(download_item->GetId(),
+                                                str(download_item->GetURL()),
+                                                str(suggested_name), &path);
+  // "Always ask where to save": prompt with a Save As dialog and override the
+  // computed destination. Cancel aborts the download (no Continue call).
+  if (ctx_.role == BrowserCtx::kTab &&
+      AppCore::get().settingsModel().getBool("alwaysAskWhere", false)) {
+    HWND owner = nullptr;
+    if (ctx_.window) owner = ctx_.window->hwnd();
+    else if (ctx_.tabs && ctx_.tabs->window())
+      owner = ctx_.tabs->window()->hwnd();
+    std::string chosen = dialogs::saveFileDialog(owner, "Save As",
+                                                 pathBaseName(path), {});
+    if (chosen.empty()) return true;  // cancelled: abort
+    path = chosen;
+    AppCore::get().downloads().SetPath(dlId, chosen);
+  }
   callback->Continue(path, false);
   return true;
 }
