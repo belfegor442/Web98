@@ -206,6 +206,26 @@
             { cmd: 'view:zoom', arg: 2, label: '200%', radio: 'zoom' }
           ]
         },
+        {
+          label: 'Encoding', sub: [
+            { cmd: 'view:encoding', arg: '', label: 'Auto Detect', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'UTF-8', label: 'UTF-8', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'ISO-8859-1', label: 'Western (ISO-8859-1)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'windows-1252', label: 'Western (Windows-1252)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'ISO-8859-15', label: 'Western (ISO-8859-15)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'ISO-8859-2', label: 'Central European (ISO-8859-2)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'windows-1250', label: 'Central European (Windows-1250)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'windows-1251', label: 'Cyrillic (Windows-1251)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'KOI8-R', label: 'Cyrillic (KOI8-R)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'Shift_JIS', label: 'Japanese (Shift_JIS)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'EUC-JP', label: 'Japanese (EUC-JP)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'ISO-2022-JP', label: 'Japanese (ISO-2022-JP)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'GB2312', label: 'Chinese Simplified (GB2312)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'GBK', label: 'Chinese Simplified (GBK)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'Big5', label: 'Chinese Traditional (Big5)', radio: 'textEncoding' },
+            { cmd: 'view:encoding', arg: 'EUC-KR', label: 'Korean (EUC-KR)', radio: 'textEncoding' }
+          ]
+        },
         { cmd: 'view:source', label: 'Source' },
         { cmd: 'view:page-info', label: 'Page Info...' },
         { sep: true },
@@ -317,8 +337,13 @@
     if (item.check != null && settings) {
       check.textContent = settings[item.check] ? '\u2713' : '';
     } else if (item.radio != null && settings) {
-      var cur = settings.zoom != null ? settings.zoom : nav.zoom;
-      check.textContent = Math.abs(cur - item.arg) < 0.001 ? '\u2022' : '';
+      if (item.radio === 'textEncoding') {
+        var enc = settings.textEncoding != null ? settings.textEncoding : '';
+        check.textContent = String(enc) === String(item.arg) ? '\u2022' : '';
+      } else {
+        var cur = settings.zoom != null ? settings.zoom : nav.zoom;
+        check.textContent = Math.abs(cur - item.arg) < 0.001 ? '\u2022' : '';
+      }
     }
     el('span', null, it).textContent = item.label;
     if (item.hint) el('i', 'ow-menu__hint', it).textContent = item.hint;

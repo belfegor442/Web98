@@ -134,6 +134,7 @@ bool AppCore::init() {
   downloads_.setListener(this);
   permissions_ = settings_.get("permissions");
   if (!permissions_.isObject()) permissions_ = Json::makeObject();
+  setCharsetCache(settings_.getString("textEncoding", ""));
   return true;
 }
 
@@ -258,6 +259,9 @@ void AppCore::setSetting(const std::string& key, const Json& value) {
   if (key == "downloadsDir") {
     downloads_.setDownloadsDir(sanitized.isString() ? sanitized.str : "");
   }
+  if (key == "textEncoding") {
+    setCharsetCache(sanitized.isString() ? sanitized.str : "");
+  }
   if (key == "permissions") permissions_ = sanitized;
   broadcast("settings:changed", settings_.all());
 }
@@ -272,6 +276,9 @@ Json AppCore::applySettingsPatch(const Json& patch) {
       storage_.setSetting(kv.first, out);
       if (kv.first == "downloadsDir") {
         downloads_.setDownloadsDir(out.isString() ? out.str : "");
+      }
+      if (kv.first == "textEncoding") {
+        setCharsetCache(out.isString() ? out.str : "");
       }
       if (kv.first == "permissions") permissions_ = out;
     }

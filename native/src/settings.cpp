@@ -301,6 +301,27 @@ bool sanitizeSettingsPatchValue(const std::string& key, const Json& in, Json& ou
     out = std::move(obj);
     return true;
   }
+  if (key == "textEncoding") {
+    // View > Encoding: value sent as Accept-Charset. Empty = browser default.
+    if (in.isNull()) {
+      out = Json::makeNull();
+      return true;
+    }
+    if (in.isString()) {
+      static const char* kEnc[] = {
+          "", "UTF-8", "ISO-8859-1", "ISO-8859-15", "windows-1252",
+          "ISO-8859-2", "windows-1250", "windows-1251", "KOI8-R",
+          "Shift_JIS", "EUC-JP", "GB2312", "GBK", "Big5", "EUC-KR",
+          "ISO-2022-JP"};
+      for (const char* e : kEnc) {
+        if (in.str == e) {
+          out = in;
+          return true;
+        }
+      }
+    }
+    return reject();
+  }
   return reject();  // unknown key (permissions, lastSession, ...)
 }
 
@@ -337,6 +358,18 @@ Json validateStoredValue(const std::string& key, const Json& raw) {
                              Json::makeString(sanitizeText(kv.second.str, 128)));
       }
       return obj;
+    }
+    return Json();
+  }
+  if (key == "textEncoding") {
+    if (raw.isString()) {
+      static const char* kEnc[] = {
+          "", "UTF-8", "ISO-8859-1", "ISO-8859-15", "windows-1252",
+          "ISO-8859-2", "windows-1250", "windows-1251", "KOI8-R",
+          "Shift_JIS", "EUC-JP", "GB2312", "GBK", "Big5", "EUC-KR",
+          "ISO-2022-JP"};
+      for (const char* e : kEnc)
+        if (raw.str == e) return raw;
     }
     return Json();
   }

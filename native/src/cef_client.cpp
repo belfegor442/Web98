@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,22 @@
 #pragma warning(pop)
 
 namespace web98 {
+
+// Thread-safe cache of the Accept-Charset value (View > Encoding). Written on
+// the UI thread when the setting changes; read on the IO thread per request.
+static std::mutex g_charset_mu;
+static std::string g_charset;
+
+void setCharsetCache(const std::string& enc) {
+  std::lock_guard<std::mutex> lock(g_charset_mu);
+  g_charset = enc;
+}
+
+std::string getCharsetCache() {
+  std::lock_guard<std::mutex> lock(g_charset_mu);
+  return g_charset;
+}
+
 namespace {
 
 // Programmatic loads (LoadURL) and history navigations must bypass the
@@ -860,6 +877,35 @@ void Web98Client::OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
     return;
   }
   ctx_.tabs->showError(tab, -1, "The tab process crashed", tab->url);
+}
+
+CefRefPtr<CefResourceRequestHandler> Web98Client::GetResourceRequestHandler(
+    CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+    CefRefPtr<CefRequest> request, bool is_navigation, bool is_download,
+    const CefString& request_initiator, bool& disable_default_handling) {
+  // Only intercept tab navigations so the chrome/dialog pages stay untouched.
+  if (ctx_.role != BrowserCtx::kTab || !is_navigation || is_download)
+    return nullptr;
+  return this;
+}
+
+CefResourceRequestHandler::ReturnValue Web98Client::OnBeforeResourceLoad(
+    CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+    CefRefPtr<CefRequest> request, CefRefPtr<CefCallback> callback) {
+  std::string enc = getCharsetCache();
+  if (!enc.empty() && request) {
+    CefRequest::HeaderMap headers;
+    request->GetHeaderMap(headers);
+    // Replace any existing Accept-Charset with the user's choice.
+    for (auto it = headers.begin(); it != headers.end();) {
+      if (it->first == "Accept-Charset") it = headers.erase(it);
+      else ++it;
+    }
+    headers.insert(headers.end(),
+                   std::make_pair(CefString("Accept-Charset"), CefString(enc)));
+    request->SetHeaderMap(headers);
+  }
+  return RV_CONTINUE;
 }
 
 }  // namespace web98

@@ -20,6 +20,7 @@
 #include "include/cef_load_handler.h"
 #include "include/cef_permission_handler.h"
 #include "include/cef_request_handler.h"
+#include "include/cef_resource_request_handler.h"
 
 #include "json.h"
 
@@ -46,6 +47,12 @@ void SendIpcReply(CefRefPtr<CefFrame> frame, int64_t id, bool ok,
 void SendIpcEvent(CefRefPtr<CefFrame> frame, const std::string& channel,
                   const Json& payload);
 
+// Thread-safe cache of the View > Encoding (Accept-Charset) value. Written
+// from the UI thread when the setting changes; read from the IO thread in
+// OnBeforeResourceLoad.
+void setCharsetCache(const std::string& enc);
+std::string getCharsetCache();
+
 class Web98Client : public CefClient,
                     public CefContextMenuHandler,
                     public CefDialogHandler,
@@ -58,7 +65,8 @@ class Web98Client : public CefClient,
                     public CefLifeSpanHandler,
                     public CefLoadHandler,
                     public CefPermissionHandler,
-                    public CefRequestHandler {
+                    public CefRequestHandler,
+                    public CefResourceRequestHandler {
  public:
   Web98Client(const BrowserCtx& ctx, const std::string& initialUrl);
   ~Web98Client() override;
@@ -206,6 +214,16 @@ class Web98Client : public CefClient,
                           const CefString& host, int port,
                           const CefString& realm, const CefString& scheme,
                           CefRefPtr<CefAuthCallback> callback) override;
+  CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
+      CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+      CefRefPtr<CefRequest> request, bool is_navigation, bool is_download,
+      const CefString& request_initiator,
+      bool& disable_default_handling) override;
+  // --- CefResourceRequestHandler ---------------------------------------------
+  ReturnValue OnBeforeResourceLoad(CefRefPtr<CefBrowser> browser,
+                                   CefRefPtr<CefFrame> frame,
+                                   CefRefPtr<CefRequest> request,
+                                   CefRefPtr<CefCallback> callback) override;
   void OnRenderProcessTerminated(CefRefPtr<CefBrowser> browser,
                                  TerminationStatus status, int error_code,
                                  const CefString& error_string) override;

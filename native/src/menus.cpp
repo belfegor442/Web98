@@ -276,6 +276,19 @@ bool runCommand(const std::string& name, const Json& arg, const CommandCtx& ctx)
     app.setSetting("statusBar", Json::makeBool(!cur));
     return true;
   }
+  if (name == "view:encoding") {
+    // arg is the charset ("" = browser default). Persist it, refresh the
+    // thread-safe cache (inside setSetting), then reload the active tab so
+    // the new Accept-Charset takes effect on the next request.
+    std::string enc = arg.isString() ? arg.str : std::string();
+    app.setSetting("textEncoding", Json::makeString(enc));
+    if (tab && tab->client && tab->client->browser() &&
+        tab->client->browser()->GetMainFrame()) {
+      tab->expectedNav = tab->url;
+      tab->client->browser()->GetMainFrame()->LoadURL(tab->url);
+    }
+    return true;
+  }
   if (name == "view:devtools") {
     if (tab && tab->client && tab->client->browser()) {
       CefWindowInfo wi;
