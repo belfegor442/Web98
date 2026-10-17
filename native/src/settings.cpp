@@ -278,6 +278,29 @@ bool sanitizeSettingsPatchValue(const std::string& key, const Json& in, Json& ou
     }
     return reject();
   }
+  if (key == "autofill") {
+    // Personal info for form AutoFill: {field: string, ...}, small caps.
+    if (in.isNull()) {
+      out = Json::makeNull();
+      return true;
+    }
+    if (!in.isObject()) return reject();
+    Json obj = Json::makeObject();
+    static const char* kFields[] = {
+        "firstName", "lastName", "company", "address1", "address2",
+        "city",     "state",     "zip",     "country",  "phone",
+        "email"};
+    for (const auto& kv : in.obj) {
+      bool known = false;
+      for (const char* f : kFields)
+        if (kv.first == f) known = true;
+      if (!known || !kv.second.isString()) continue;
+      obj.obj.emplace_back(kv.first,
+                           Json::makeString(sanitizeText(kv.second.str, 128)));
+    }
+    out = std::move(obj);
+    return true;
+  }
   return reject();  // unknown key (permissions, lastSession, ...)
 }
 
@@ -296,6 +319,25 @@ Json validateStoredValue(const std::string& key, const Json& raw) {
   }
   if (key == "searchEngine") {
     if (raw.isString() && !raw.str.empty()) return raw;
+    return Json();
+  }
+  if (key == "autofill") {
+    if (raw.isObject()) {
+      Json obj = Json::makeObject();
+      static const char* kFields[] = {
+          "firstName", "lastName", "company", "address1", "address2",
+          "city",     "state",     "zip",     "country",  "phone",
+          "email"};
+      for (const auto& kv : raw.obj) {
+        bool known = false;
+        for (const char* f : kFields)
+          if (kv.first == f) known = true;
+        if (!known || !kv.second.isString()) continue;
+        obj.obj.emplace_back(kv.first,
+                             Json::makeString(sanitizeText(kv.second.str, 128)));
+      }
+      return obj;
+    }
     return Json();
   }
   if (key == "downloadsDir") {

@@ -480,6 +480,60 @@ bool handleAccelerator(int code, bool ctrl, bool alt, bool shift,
     app.openDialog("settings", win, &payload);
     return true;
   }
+  // Ctrl+Shift+F: AutoFill the active page's form with personal info.
+  if (ctrl && shift && !alt && k == 'f') {
+    auto h = hostOf();
+    if (!h || !h->GetMainFrame()) return true;
+    Json af = app.settingsModel().get("autofill");
+    if (!af.isObject() || af.obj.empty()) return true;
+    std::string data = af.dump();
+    std::string js =
+        "(function(){var af=" + data + ";"
+        "var map={"
+        "firstName:['firstname','first','fname','givenname','forename'],"
+        "lastName:['lastname','last','lname','surname','familyname'],"
+        "company:['company','org','organization','business'],"
+        "address1:['address','address1','street','addr','line1'],"
+        "address2:['address2','addr2','line2','suite','apt'],"
+        "city:['city','town'],"
+        "state:['state','province','region'],"
+        "zip:['zip','zipcode','postal','postcode'],"
+        "country:['country'],"
+        "phone:['phone','tel','telephone','mobile'],"
+        "email:['email','mail'],"
+        "name:['fullname','yourname','customername']"
+        "};"
+        "function val(k){return af[k]||'';}"
+        "function match(h){"
+        "h=(h||'').toLowerCase().replace(/[^a-z0-9]/g,'');"
+        "if(!h)return null;"
+        "for(var k in map){if(map[k].indexOf(h)!==-1)return k;}"
+        "for(var k in map){var a=map[k];for(var i=0;i<a.length;i++){"
+        "if(h.indexOf(a[i])!==-1)return k;}}"
+        "return null;}"
+        "var skip=['hidden','submit','button','checkbox','radio','file',"
+        "'image','password','reset','range','color'];"
+        "var els=document.querySelectorAll('input,textarea');"
+        "var filled=0;"
+        "for(var i=0;i<els.length;i++){"
+        "var el=els[i];"
+        "if(skip.indexOf(el.type)!==-1)continue;"
+        "if(el.disabled||el.readOnly)continue;"
+        "var hint=el.name||el.id||el.placeholder||el.getAttribute('autocomplete')||'';"
+        "var k=match(hint);"
+        "if(!k)continue;"
+        "var v=(k==='name')?((val('firstName')+' '+val('lastName')).trim()):val(k);"
+        "if(!v)continue;"
+        "if(el.value&&el.value.trim())continue;"
+        "el.value=v;"
+        "el.dispatchEvent(new Event('input',{bubbles:true}));"
+        "el.dispatchEvent(new Event('change',{bubbles:true}));"
+        "filled++;}"
+        "return filled;"
+        "})()";
+    h->GetMainFrame()->ExecuteJavaScript(js, h->GetMainFrame()->GetURL(), 0);
+    return true;
+  }
   // F12: developer tools.
   if (code == VK_F12) {
     if (tab && tab->client && tab->client->browser() &&

@@ -159,8 +159,52 @@
           <fieldset class="w98-group grp">
             <legend>Personal information</legend>
             <div class="pane-note">
-              AutoComplete can suggest addresses, forms and passwords as you
-              type in the address bar. Web98 never sends this data anywhere.
+              Web98 can fill forms with this information when you press
+              Ctrl+Shift+F on a page. Data never leaves your computer.
+            </div>
+            <div class="row-h">
+              <label for="af-first">First name:</label>
+              <input class="w98-input" id="af-first" type="text" maxlength="128" />
+            </div>
+            <div class="row-h">
+              <label for="af-last">Last name:</label>
+              <input class="w98-input" id="af-last" type="text" maxlength="128" />
+            </div>
+            <div class="row-h">
+              <label for="af-company">Company:</label>
+              <input class="w98-input" id="af-company" type="text" maxlength="128" />
+            </div>
+            <div class="row-h">
+              <label for="af-address1">Address:</label>
+              <input class="w98-input" id="af-address1" type="text" maxlength="128" />
+            </div>
+            <div class="row-h">
+              <label for="af-address2">Address 2:</label>
+              <input class="w98-input" id="af-address2" type="text" maxlength="128" />
+            </div>
+            <div class="row-h">
+              <label for="af-city">City:</label>
+              <input class="w98-input" id="af-city" type="text" maxlength="128" />
+            </div>
+            <div class="row-h">
+              <label for="af-state">State:</label>
+              <input class="w98-input" id="af-state" type="text" maxlength="128" />
+            </div>
+            <div class="row-h">
+              <label for="af-zip">ZIP:</label>
+              <input class="w98-input" id="af-zip" type="text" maxlength="128" />
+            </div>
+            <div class="row-h">
+              <label for="af-country">Country:</label>
+              <input class="w98-input" id="af-country" type="text" maxlength="128" />
+            </div>
+            <div class="row-h">
+              <label for="af-phone">Phone:</label>
+              <input class="w98-input" id="af-phone" type="text" maxlength="128" />
+            </div>
+            <div class="row-h">
+              <label for="af-email">E-mail:</label>
+              <input class="w98-input" id="af-email" type="text" maxlength="128" />
             </div>
             <label class="w98-check">
               <input type="checkbox" checked disabled />
@@ -267,6 +311,8 @@
         var ckFocus = document.getElementById('ck-focus');
         var ckLinks = document.getElementById('ck-links');
         var ckThrob = document.getElementById('ck-throb');
+        var afIds = ['first', 'last', 'company', 'address1', 'address2',
+                     'city', 'state', 'zip', 'country', 'phone', 'email'];
 
         function collect() {
           pending.homepage = inHome.value.trim() || pending.homepage;
@@ -280,6 +326,12 @@
           pending.linksBar = ckLinks.checked;
           pending.throbber = ckThrob.checked;
           pending.downloadsDir = inDl.value.trim() || null;
+          var af = {};
+          afIds.forEach(function (f) {
+            var v = document.getElementById('af-' + f).value.trim();
+            if (v) af[f] = v;
+          });
+          pending.autofill = Object.keys(af).length ? af : null;
           return pending;
         }
 
@@ -302,6 +354,10 @@
           ckLinks.checked = !!pending.linksBar;
           ckThrob.checked = pending.throbber !== false;
           inDl.value = pending.downloadsDir || '';
+          var af = pending.autofill || {};
+          afIds.forEach(function (f) {
+            document.getElementById('af-' + f).value = af[f] || '';
+          });
         }
 
         document.getElementById('btn-home-blank').addEventListener('click', function () {
@@ -389,7 +445,8 @@
             toolbarVisible: pending.toolbarVisible,
             statusBar: pending.statusBar,
             sessionRestore: pending.sessionRestore,
-            downloadsDir: pending.downloadsDir
+            downloadsDir: pending.downloadsDir,
+            autofill: pending.autofill
           };
           return dlg.invoke('settings:set', patch).then(function (s) {
             current = s;
