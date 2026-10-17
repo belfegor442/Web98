@@ -7,7 +7,16 @@ namespace {
 
 SessionWindow sanitizeWindow(const SessionWindow& w) {
   SessionWindow out;
-  out.urls = sanitizeSessionList(w.urls, 40);
+  // Filter loadable urls, keeping the parallel pinned flags in sync (a plain
+  // sanitizeSessionList would drop urls and desync the two arrays).
+  int limit = 40;
+  for (size_t i = 0; i < w.urls.size(); ++i) {
+    if (static_cast<int>(out.urls.size()) >= limit) break;
+    const std::string& u = w.urls[i];
+    if (!isLoadableUrl(u)) continue;
+    out.urls.push_back(u);
+    out.pinned.push_back(i < w.pinned.size() ? w.pinned[i] : false);
+  }
   if (out.urls.empty()) return out;
   out.active = w.active;
   if (out.active < 0 || out.active >= static_cast<int>(out.urls.size())) out.active = 0;
@@ -32,6 +41,9 @@ std::vector<SessionWindow> parseStoredSession(const Json& stored) {
       }
       const Json* active = w.find("active");
       if (active && active->isNumber()) sw.active = static_cast<int>(active->num);
+      const Json* pinned = w.find("pinned");
+      if (pinned && pinned->isArray())
+        for (const auto& p : pinned->arr) sw.pinned.push_back(p.boolOr(false));
       SessionWindow clean = sanitizeWindow(sw);
       if (!clean.urls.empty()) out.push_back(std::move(clean));
     }
@@ -58,8 +70,14 @@ Json buildStoredSession(const std::vector<SessionWindow>& windows) {
     if (clean.urls.empty()) continue;
     Json entry = Json::makeObject();
     Json urls = Json::makeArray();
-    for (const auto& u : clean.urls) urls.arr.push_back(Json::makeString(u));
+    Json pinned = Json::makeArray();
+    for (size_t i = 0; i < clean.urls.size(); ++i) {
+      urls.arr.push_back(Json::makeString(clean.urls[i]));
+      pinned.arr.push_back(
+          Json::makeBool(i < clean.pinned.size() ? clean.pinned[i] : false));
+    }
     entry.obj.emplace_back("urls", std::move(urls));
+    entry.obj.emplace_back("pinned", std::move(pinned));
     entry.obj.emplace_back("active", Json::makeNumber(clean.active));
     arr.arr.push_back(std::move(entry));
     if (arr.arr.size() >= 8) break;

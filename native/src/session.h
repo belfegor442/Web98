@@ -1,6 +1,6 @@
 #pragma once
 // Multi-window session persistence (settings key "lastSession").
-// Shape: {windows:[{urls:[...],active:n},...]} (legacy: {urls,active}).
+// Shape: {windows:[{urls:[...],active:n,pinned:[0|1,...]},...]} (legacy: {urls,active}).
 #include <string>
 #include <vector>
 
@@ -10,6 +10,8 @@ namespace web98 {
 
 struct SessionWindow {
   std::vector<std::string> urls;
+  // Parallel to urls: pinned flag per tab (false when absent/legacy).
+  std::vector<bool> pinned;
   int active = 0;
 };
 

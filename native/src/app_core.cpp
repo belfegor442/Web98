@@ -182,6 +182,7 @@ void AppCore::saveSession(MainWindow* closing) {
       if (!tab || tab->url.empty() || tab->url == "about:blank") return;
       if (t->active() == tab) sw.active = static_cast<int>(sw.urls.size());
       sw.urls.push_back(tab->url);
+      sw.pinned.push_back(tab->pinned);
     });
     if (!sw.urls.empty()) out.push_back(std::move(sw));
   }

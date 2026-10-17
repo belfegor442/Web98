@@ -159,6 +159,7 @@ bool MainWindow::create(const SessionWindow* session, bool show) {
   if (!RegisterFrameClasses()) return false;
   if (session) {
     restoreUrls_ = session->urls;
+    restorePinned_ = session->pinned;
     restoreActive_ = session->active;
   }
   showWhenReady_ = show;
@@ -207,6 +208,7 @@ bool MainWindow::create(const SessionWindow* session, bool show) {
 void MainWindow::setPendingSession(const SessionWindow* session, bool show) {
   if (session) {
     restoreUrls_ = session->urls;
+    restorePinned_ = session->pinned;
     restoreActive_ = session->active;
   }
   showWhenReady_ = show;
@@ -301,14 +303,27 @@ void MainWindow::onChromeLoaded() {
   if (chromeLoaded_) return;
   chromeLoaded_ = true;
 
-  std::vector<std::string> urls = sanitizeSessionList(restoreUrls_, 40);
+  // Filter loadable urls while keeping the parallel pinned flags in sync
+  // (a plain sanitizeSessionList would drop urls and desync the two arrays).
+  std::vector<std::string> urls;
+  std::vector<bool> pinned;
+  for (size_t i = 0; i < restoreUrls_.size(); ++i) {
+    if (static_cast<int>(urls.size()) >= 40) break;
+    if (!isLoadableUrl(restoreUrls_[i])) continue;
+    urls.push_back(restoreUrls_[i]);
+    pinned.push_back(i < restorePinned_.size() ? restorePinned_[i] : false);
+  }
   restoreUrls_.clear();
+  restorePinned_.clear();
   if (!urls.empty()) {
     int activeIdx = restoreActive_;
     if (activeIdx < 0 || activeIdx >= static_cast<int>(urls.size())) activeIdx = 0;
     for (size_t i = 0; i < urls.size(); ++i) {
-      if (static_cast<int>(i) == activeIdx) tabs_->create(urls[i], true);
-      else tabs_->createBackground(urls[i]);
+      Tab* created;
+      if (static_cast<int>(i) == activeIdx) created = tabs_->create(urls[i], true);
+      else created = tabs_->createBackground(urls[i]);
+      // Restore the pinned flag (tabs start unpinned, so a single toggle on).
+      if (created && i < pinned.size() && pinned[i]) tabs_->togglePin(created->id);
     }
     if (tabs_->count() > 0) {
       Json list = tabs_->list();

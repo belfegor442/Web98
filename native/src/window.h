@@ -62,6 +62,7 @@ class MainWindow {
   CefRefPtr<Web98Client> chromeClient_;
   CefRefPtr<CefBrowser> chrome_;
   std::vector<std::string> restoreUrls_;
+  std::vector<bool> restorePinned_;
   int restoreActive_ = 0;
   bool showWhenReady_ = true;
   bool chromeLoaded_ = false;
