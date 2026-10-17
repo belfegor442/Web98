@@ -463,6 +463,42 @@ void runDlpath() {
   ::DeleteFileA(full.c_str());
 }
 
+void runBase() {
+  // --- resolveUrl (save-page subresource resolution) ---
+  const char* n = "resolveUrl";
+  const std::string base = "http://ex.com/dir/page.html";
+
+  CHECK_EQ_STR(n, resolveUrl(base, "img.png"), "http://ex.com/dir/img.png");
+  CHECK_EQ_STR(n, resolveUrl(base, "./img.png"), "http://ex.com/dir/img.png");
+  CHECK_EQ_STR(n, resolveUrl(base, "../up.png"), "http://ex.com/up.png");
+  CHECK_EQ_STR(n, resolveUrl(base, "/root.png"), "http://ex.com/root.png");
+  CHECK_EQ_STR(n, resolveUrl(base, "//cdn.ex.com/a.png"),
+               "http://cdn.ex.com/a.png");
+  CHECK_EQ_STR(n, resolveUrl(base, "https://o.com/x.png"),
+               "https://o.com/x.png");
+  // base with query/fragment still resolves relative refs from its directory.
+  CHECK_EQ_STR(n, resolveUrl("http://ex.com/dir/p.html?x=1#f", "i.png"),
+               "http://ex.com/dir/i.png");
+  // Unusable references -> "".
+  CHECK_EQ_STR(n, resolveUrl(base, "data:image/png;base64,AAA"), "");
+  CHECK_EQ_STR(n, resolveUrl(base, "javascript:void(0)"), "");
+  CHECK_EQ_STR(n, resolveUrl(base, "#anchor"), "");
+  CHECK_EQ_STR(n, resolveUrl(base, ""), "");
+  CHECK_EQ_STR(n, resolveUrl("not-a-url", "i.png"), "");
+
+  // --- base64Encode (data: URI payload) ---
+  const char* b = "base64Encode";
+  CHECK_EQ_STR(b, base64Encode(nullptr, 0), "");
+  const unsigned char f[] = {'f'};
+  CHECK_EQ_STR(b, base64Encode(f, 1), "Zg==");
+  const unsigned char fo[] = {'f', 'o'};
+  CHECK_EQ_STR(b, base64Encode(fo, 2), "Zm8=");
+  const unsigned char foo[] = {'f', 'o', 'o'};
+  CHECK_EQ_STR(b, base64Encode(foo, 3), "Zm9v");
+  const unsigned char man[] = {'M', 'a', 'n'};
+  CHECK_EQ_STR(b, base64Encode(man, 3), "TWFu");
+}
+
 }  // namespace
 
 int main() {
@@ -474,6 +510,7 @@ int main() {
   runStorage();
   runSecurity();
   runDlpath();
+  runBase();
   std::printf("%d passed, %d failed\n", g_passed, g_failed);
   return g_failed == 0 ? 0 : 1;
 }

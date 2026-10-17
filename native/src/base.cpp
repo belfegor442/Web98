@@ -7,7 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
-
+#include <vector>
 #include "urlbar.h"  // encodeURIComponent
 
 namespace web98 {
@@ -237,6 +237,56 @@ std::string fileUrlToPath(const std::string& url) {
   return out;
 }
 
+std::string resolveUrl(const std::string& base, const std::string& ref) {
+  std::string r = trim(ref);
+  if (r.empty()) return std::string();
+  if (startsWith(r, "data:") || startsWith(r, "javascript:") ||
+      startsWith(r, "mailto:") || startsWith(r, "about:") || r[0] == '#')
+    return std::string();
+  if (startsWith(r, "http://") || startsWith(r, "https://")) return r;
+  // Split base into scheme://authority + path.
+  size_t scheme = base.find("://");
+  if (scheme == std::string::npos) return std::string();
+  size_t pathStart = base.find('/', scheme + 3);
+  std::string origin =
+      pathStart == std::string::npos ? base : base.substr(0, pathStart);
+  if (startsWith(r, "//")) return base.substr(0, scheme + 1) + r;  // protocol-rel
+  // Directory of the base path (strip query/fragment first).
+  std::string cleanBase = base;
+  size_t cut = cleanBase.find_first_of("?#");
+  if (cut != std::string::npos) cleanBase = cleanBase.substr(0, cut);
+  size_t slash = cleanBase.rfind('/');
+  std::string dir = (slash == std::string::npos || slash < scheme + 3)
+                        ? origin + "/"
+                        : cleanBase.substr(0, slash + 1);
+  std::string joined = (r[0] == '/') ? origin + r : dir + r;  // root-rel | rel
+  // Normalize "." and ".." segments in the joined path (keep the origin intact).
+  size_t pathAt = joined.find('/', scheme + 3);
+  if (pathAt == std::string::npos) return joined;
+  std::string out = joined.substr(0, pathAt + 1);  // "scheme://authority/"
+  std::string rest = joined.substr(pathAt + 1);
+  std::vector<std::string> segs;
+  size_t pos = 0;
+  while (pos <= rest.size()) {
+    size_t slashPos = rest.find('/', pos);
+    std::string seg = rest.substr(
+        pos, slashPos == std::string::npos ? std::string::npos : slashPos - pos);
+    if (seg == "..") {
+      if (!segs.empty()) segs.pop_back();
+    } else if (!seg.empty() && seg != ".") {
+      segs.push_back(seg);
+    }
+    if (slashPos == std::string::npos) break;
+    pos = slashPos + 1;
+    if (pos > rest.size()) { out += '/'; break; }  // trailing slash
+  }
+  for (size_t i = 0; i < segs.size(); ++i) {
+    if (i) out += '/';
+    out += segs[i];
+  }
+  return out;
+}
+
 std::string userDataDir() {
   std::string env = envOrEmpty("WEB98_USER_DATA");
   if (!env.empty()) return env;
@@ -303,5 +353,35 @@ int64_t nowMs() {
 }
 
 std::string urlEncodeQuery(const std::string& s) { return encodeURIComponent(s); }
+
+std::string base64Encode(const unsigned char* data, size_t len) {
+  static const char tbl[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  out.reserve(((len + 2) / 3) * 4);
+  size_t i = 0;
+  while (i + 2 < len) {
+    unsigned n = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+    out += tbl[(n >> 18) & 63];
+    out += tbl[(n >> 12) & 63];
+    out += tbl[(n >> 6) & 63];
+    out += tbl[n & 63];
+    i += 3;
+  }
+  if (i < len) {
+    unsigned n = static_cast<unsigned>(data[i]) << 16;
+    out += tbl[(n >> 18) & 63];
+    if (i + 1 < len) {
+      n |= static_cast<unsigned>(data[i + 1]) << 8;
+      out += tbl[(n >> 12) & 63];
+      out += tbl[(n >> 6) & 63];
+      out += '=';
+    } else {
+      out += tbl[(n >> 12) & 63];
+      out += "==";
+    }
+  }
+  return out;
+}
 
 }  // namespace web98

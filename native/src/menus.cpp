@@ -3,6 +3,14 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <functional>
+#include <map>
+#include <memory>
+#include <regex>
+#include <set>
+
+#include "include/cef_request_context.h"
+#include "include/cef_urlrequest.h"
 
 #include "app_core.h"
 #include "base.h"
@@ -34,9 +42,143 @@ void printTab(CefRefPtr<CefBrowser> b) {
   if (b && b->GetHost()) b->GetHost()->Print();
 }
 
-// menus.js savePage: dialog then write the DOM as HTML.
-// Divergence: Electron uses savePage(path,'HTMLComplete') (embedded assets);
-// CEF only exposes the markup, so subresources are not inlined.
+// menus.js savePage: dialog then write the DOM as HTML, with subresources
+// (images + stylesheets) inlined as data: URIs for offline viewing — parity
+// with Electron savePage(path,'HTMLComplete'). Fetching is done natively via
+// CefURLRequest (browser process, so no page-CORS limits) on the UI thread;
+// web tabs expose no IPC bridge, so nothing is handed to page script.
+
+// Extract the value of attribute `name` from an HTML tag fragment.
+std::string tagAttr(const std::string& tag, const std::string& name) {
+  std::regex re("\\b" + name + "\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))",
+                std::regex::icase);
+  std::smatch m;
+  if (!std::regex_search(tag, m, re)) return "";
+  if (m[1].matched) return m[1].str();
+  if (m[2].matched) return m[2].str();
+  return m[3].str();
+}
+
+// A single in-flight subresource fetch + the shared saver state it updates.
+class PageSaver : public CefURLRequestClient {
+ public:
+  static void Run(CefRefPtr<CefBrowser> browser, std::string html,
+                  std::string pageUrl, std::string path) {
+    CefRefPtr<PageSaver> s = new PageSaver(std::move(html), std::move(pageUrl),
+                                           std::move(path), browser);
+    s->Start();
+  }
+
+  // --- CefURLRequestClient (UI thread; same as creator) --------------------
+  void OnRequestComplete(CefRefPtr<CefURLRequest> request) override {
+    std::string url = request->GetRequest()->GetURL().ToString();
+    bool ok = request->GetRequestStatus() == UR_SUCCESS && !currentBody_.empty();
+    if (ok) {
+      std::string mime = "application/octet-stream";
+      if (request->GetResponse()) {
+        std::string ct = request->GetResponse()->GetMimeType().ToString();
+        if (!ct.empty()) mime = ct;
+      }
+      dataUris_[url] =
+          "data:" + mime + ";base64," +
+          base64Encode(reinterpret_cast<const unsigned char*>(currentBody_.data()),
+                       currentBody_.size());
+    }
+    currentBody_.clear();
+    currentUrl_.clear();
+    FetchNext();
+  }
+  void OnUploadProgress(CefRefPtr<CefURLRequest> request, int64_t c,
+                        int64_t t) override {}
+  void OnDownloadProgress(CefRefPtr<CefURLRequest> request, int64_t c,
+                          int64_t t) override {}
+  void OnDownloadData(CefRefPtr<CefURLRequest> request, const void* data,
+                      size_t len) override {
+    currentBody_.append(static_cast<const char*>(data), len);
+  }
+  bool GetAuthCredentials(bool isProxy, const CefString& host, int port,
+                          const CefString& realm, const CefString& scheme,
+                          CefRefPtr<CefAuthCallback> callback) override {
+    return false;  // no credentials for subresource fetches
+  }
+
+ private:
+  PageSaver(std::string html, std::string pageUrl, std::string path,
+            CefRefPtr<CefBrowser> browser)
+      : html_(std::move(html)),
+        pageUrl_(std::move(pageUrl)),
+        path_(std::move(path)) {
+    if (browser && browser->GetHost())
+      ctx_ = browser->GetHost()->GetRequestContext();
+  }
+
+  void Start() {
+    // Collect <img src> and <link rel=stylesheet href> targets.
+    std::set<std::string> uniq;
+    std::regex tagRe("<(?:img|link)\\b[^>]*>", std::regex::icase);
+    for (auto it = std::sregex_iterator(html_.begin(), html_.end(), tagRe);
+         it != std::sregex_iterator(); ++it) {
+      std::string tag = it->str();
+      bool isLink = tag.size() > 5 && (tag[1] == 'l' || tag[1] == 'L');
+      std::string attr = isLink ? "href" : "src";
+      std::string raw = tagAttr(tag, attr);
+      if (isLink) {
+        std::string rel = tagAttr(tag, "rel");
+        std::string relL = asciiLower(rel);
+        if (relL.find("stylesheet") == std::string::npos) continue;
+      }
+      std::string abs = resolveUrl(pageUrl_, raw);
+      if (!abs.empty()) uniq.insert(abs);
+    }
+    urls_.assign(uniq.begin(), uniq.end());
+    if (urls_.empty()) {
+      Finish();
+      return;
+    }
+    FetchNext();
+  }
+
+  void FetchNext() {
+    if (index_ >= urls_.size()) {
+      Finish();
+      return;
+    }
+    currentUrl_ = urls_[index_++];
+    CefRefPtr<CefRequest> req = CefRequest::Create();
+    req->SetURL(currentUrl_);
+    req->SetMethod("GET");
+    CefURLRequest::Create(req, this, ctx_);  // kept alive by CEF until complete
+  }
+
+  void Finish() {
+    // Replace each resolved URL with its data: URI (longest first so nested
+    // prefixes never clobber one another).
+    std::sort(urls_.begin(), urls_.end(),
+              [](const std::string& a, const std::string& b) {
+                return a.size() > b.size();
+              });
+    for (const auto& u : urls_) {
+      auto found = dataUris_.find(u);
+      if (found == dataUris_.end()) continue;  // fetch failed -> keep original
+      size_t pos = 0;
+      while ((pos = html_.find(u, pos)) != std::string::npos) {
+        html_.replace(pos, u.size(), found->second);
+        pos += found->second.size();
+      }
+    }
+    writeFileAtomic(path_, html_);
+  }
+
+  std::string html_, pageUrl_, path_;
+  CefRefPtr<CefRequestContext> ctx_;
+  std::vector<std::string> urls_;
+  std::map<std::string, std::string> dataUris_;
+  size_t index_ = 0;
+  std::string currentUrl_, currentBody_;
+  IMPLEMENT_REFCOUNTING(PageSaver);
+  DISALLOW_COPY_AND_ASSIGN(PageSaver);
+};
+
 void savePageTab(Tab* tab) {
   if (!tab) return;
   std::string suggested = sanitizeText(tab->title.empty() ? "page" : tab->title, 80);
@@ -56,8 +198,11 @@ void savePageTab(Tab* tab) {
   if (path.empty()) return;
   CefRefPtr<CefBrowser> b = tab->client ? tab->client->browser() : nullptr;
   if (!b || !b->GetMainFrame()) return;
-  b->GetMainFrame()->GetSource(
-      new StringSink([path](const CefString& s) { writeFileAtomic(path, s.ToString()); }));
+  std::string pageUrl = b->GetMainFrame()->GetURL().ToString();
+  b->GetMainFrame()->GetSource(new StringSink(
+      [b, pageUrl, path](const CefString& s) {
+        PageSaver::Run(b, s.ToString(), pageUrl, path);
+      }));
 }
 
 }  // namespace

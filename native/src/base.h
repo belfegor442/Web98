@@ -31,6 +31,9 @@ std::string envOrEmpty(const char* name);
 std::string pathToFileUrl(const std::string& path);
 // file:// URL -> native path ("" when not a file URL).
 std::string fileUrlToPath(const std::string& url);
+// Resolve a (possibly relative) resource reference `ref` against the absolute
+// page URL `base`. Returns "" for data:/javascript:/mailto:/#/unusable input.
+std::string resolveUrl(const std::string& base, const std::string& ref);
 
 // Profile directory: $WEB98_USER_DATA, else %APPDATA%\Web98.
 std::string userDataDir();
@@ -45,5 +48,7 @@ std::string errorPageUrl();  // file URL of res/error.html
 // --- misc ------------------------------------------------------------------
 int64_t nowMs();
 std::string urlEncodeQuery(const std::string& s);  // encodeURIComponent clone
+// Standard base64 (RFC 4648, with padding). Used for data: URIs.
+std::string base64Encode(const unsigned char* data, size_t len);
 
 }  // namespace web98
