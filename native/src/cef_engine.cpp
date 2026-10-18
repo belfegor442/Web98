@@ -306,10 +306,10 @@ void TabManager::close(int id, bool destroyed) {
       win_->requestClose();
     }
   }
-  // If the closed tab was the in-flight flush job, advance the queue.
-  if (flushJobId_ == id) {
-    flushJobId_ = 0;
-    ++flushToken_;
+  // If the closed tab had a background load in flight, advance the queue.
+  auto inflight = std::find(flushInflight_.begin(), flushInflight_.end(), id);
+  if (inflight != flushInflight_.end()) {
+    flushInflight_.erase(inflight);
     scheduleFlush(100);
   }
   emitTabs();
@@ -528,22 +528,25 @@ void TabManager::OnLoadEnd(Tab* tab) {
       host->ExecuteDevToolsMethod(0, "Runtime.evaluate", params);
     }
   }
-  // A background-load turn completed: schedule the next one (tabs.js uses
-  // did-finish-load/did-fail-load plus a 15s watchdog).
-  if (tab && flushJobId_ != 0 && tab->id == flushJobId_) {
-    flushJobId_ = 0;
-    ++flushToken_;  // invalidate the watchdog for this job
-    scheduleFlush(200);
+  // A background-load turn completed: refill the parallel restore pipeline.
+  if (tab) {
+    auto it = std::find(flushInflight_.begin(), flushInflight_.end(), tab->id);
+    if (it != flushInflight_.end()) {
+      flushInflight_.erase(it);
+      scheduleFlush(0);
+    }
   }
 }
 
 void TabManager::OnLoadError(Tab* tab, int code, const std::string& desc,
                              const std::string& url) {
   // Failed background loads must also advance the flush queue.
-  if (tab && flushJobId_ != 0 && tab->id == flushJobId_) {
-    flushJobId_ = 0;
-    ++flushToken_;
-    scheduleFlush(200);
+  if (tab) {
+    auto it = std::find(flushInflight_.begin(), flushInflight_.end(), tab->id);
+    if (it != flushInflight_.end()) {
+      flushInflight_.erase(it);
+      scheduleFlush(200);
+    }
   }
   // If the error page itself failed to load, clear the guard so the next
   // error is not swallowed by showError's errorPageShown check.
@@ -627,8 +630,6 @@ void TabManager::scheduleFlush(int delayMs) {
 }
 
 void TabManager::flushPending() {
-  // A background load is already in flight; don't start another.
-  if (flushJobId_ != 0) return;
   // Drop jobs whose tab went away or whose URL was superseded.
   std::vector<Job> keep;
   for (const auto& job : pendingLoads_) {
@@ -636,29 +637,31 @@ void TabManager::flushPending() {
     if (t && t->pendingUrl == job.url) keep.push_back(job);
   }
   pendingLoads_.swap(keep);
-  if (pendingLoads_.empty()) return;
 
-  Job job = pendingLoads_.front();
-  pendingLoads_.erase(pendingLoads_.begin());
-  Tab* tab = get(job.tabId);
-  if (!tab) {
-    scheduleFlush(100);
-    return;
+  // Parallel restore: start background loads up to the concurrency cap so a
+  // session with many tabs does not wait for one full page round-trip each.
+  constexpr size_t kMaxConcurrent = 3;
+  while (flushInflight_.size() < kMaxConcurrent && !pendingLoads_.empty()) {
+    Job job = pendingLoads_.front();
+    pendingLoads_.erase(pendingLoads_.begin());
+    Tab* tab = get(job.tabId);
+    if (!tab) continue;
+    tab->pendingUrl.clear();
+    if (!ensureBrowser(tab, job.url)) continue;
+    flushInflight_.push_back(tab->id);
+    int tabId = tab->id;
+    std::weak_ptr<int> weak = alive_;
+    PostUiDelayed(
+        [this, weak, tabId]() {
+          if (weak.expired()) return;
+          auto it =
+              std::find(flushInflight_.begin(), flushInflight_.end(), tabId);
+          if (it == flushInflight_.end()) return;  // completed already
+          flushInflight_.erase(it);
+          scheduleFlush(100);
+        },
+        15000);
   }
-  tab->pendingUrl.clear();
-  ensureBrowser(tab, job.url);
-
-  flushJobId_ = tab->id;
-  int token = ++flushToken_;
-  std::weak_ptr<int> weak = alive_;
-  PostUiDelayed(
-      [this, weak, token]() {
-        if (weak.expired()) return;
-        if (token != flushToken_) return;  // completed already
-        flushJobId_ = 0;
-        scheduleFlush(100);
-      },
-      15000);
 }
 
 /* ------------------------- memory saver (sleep) --------------------------- */

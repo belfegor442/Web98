@@ -171,8 +171,7 @@ class TabManager {
   };
   std::vector<Job> pendingLoads_;
   bool flushScheduled_ = false;
-  int flushToken_ = 0;
-  int flushJobId_ = 0;  // tab whose background load is in flight
+  std::vector<int> flushInflight_;  // tabs with a background load in flight
 
   // Memory saver sweep (self-perpetuating while the window lives).
   bool sweepScheduled_ = false;
