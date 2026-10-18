@@ -13,6 +13,7 @@
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "bench": "node test/bench/startup.js",
     "bench:memory": "node test/bench/memory.js",
+    "bench:cef": "node test/bench/startup_cef.js",
     "dist": "electron-builder --win nsis portable",
     "dist:win-arm64": "electron-builder --win nsis portable --arm64",
     "dist:linux": "electron-builder --linux dir",
