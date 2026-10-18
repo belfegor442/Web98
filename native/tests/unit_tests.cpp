@@ -208,6 +208,8 @@ void runSettings() {
   CHECK_EQ_STR(n, sanitizeText("  hi\x01\x02  ", 100), "hi");
   CHECK_EQ_INT(n, sanitizeText(std::string(300, 'a'), 10).size(), 10);
   CHECK(n, isGrantOrigin("https://example.com"));
+  CHECK(n, !isGrantOrigin("null"));
+  CHECK(n, !isGrantOrigin("file://"));
   CHECK(n, !isGrantOrigin("not a url"));
   CHECK(n, isPermissionName("geolocation"));
   CHECK(n, !isPermissionName("../../etc"));
