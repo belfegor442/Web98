@@ -101,13 +101,15 @@ function median(nums) {
   return s[Math.floor(s.length / 2)];
 }
 
+let benchmarkProc = null;
+
 async function main() {
   const results = {};
   // Never terminate unrelated Electron applications; this benchmark owns only its child process.
 
   /* --- 1. cold startup (wall time spawn -> debugger + ready log) --- */
   let t0 = Date.now();
-  const proc = spawn(ELECTRON, ['.', `--remote-debugging-port=${PORT}`], {
+  const proc = benchmarkProc = spawn(ELECTRON, ['.', `--remote-debugging-port=${PORT}`], {
     cwd: ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: BENCH_ENV
@@ -251,5 +253,13 @@ async function main() {
 
 main().catch((err) => {
   console.error('bench fatal:', err);
+  // If any benchmark step fails, clean up only the child process this run started.
+  if (benchmarkProc && benchmarkProc.exitCode === null) {
+    try {
+      execSync(`taskkill /F /PID ${benchmarkProc.pid} /T`, { stdio: 'ignore' });
+    } catch (cleanupError) {
+      try { benchmarkProc.kill(); } catch (killError) { /* already exited */ }
+    }
+  }
   process.exit(1);
 });
