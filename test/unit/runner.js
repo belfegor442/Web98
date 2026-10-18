@@ -639,7 +639,8 @@ function runValidate() {
 
   test('validate: grant origins and permission names', function () {
     ok(validate.isGrantOrigin('https://x.example'), 'https origin');
-    ok(validate.isGrantOrigin('null'), 'null origin');
+    eq(validate.isGrantOrigin('null'), false, 'opaque null origin cannot receive persistent grants');
+    eq(validate.isGrantOrigin('file://'), false, 'file origin cannot receive persistent grants');
     eq(validate.isGrantOrigin('javascript:alert(1)'), false, 'javascript not origin');
     eq(validate.isGrantOrigin(42), false, 'non-string');
     ok(validate.isPermissionName('geolocation'), 'geolocation');
