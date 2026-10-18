@@ -4,6 +4,11 @@
 #include <commdlg.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <objidl.h>
+#include <ole2.h>
+#include <gdiplus.h>
+
+#pragma comment(lib, "gdiplus.lib")
 
 #include <algorithm>
 #include <string>
@@ -579,6 +584,88 @@ std::string getClipboardText() {
   }
   ::CloseClipboard();
   return out;
+}
+
+bool setClipboardImage(const void* data, size_t len) {
+  if (!data || !len) return false;
+  // Init GDI+ once (same lazy pattern as the PNG snapshot encoder).
+  static ULONG_PTR s_token = 0;
+  static bool s_initTried = false;
+  if (!s_initTried) {
+    s_initTried = true;
+    Gdiplus::GdiplusStartupInput input;
+    if (Gdiplus::GdiplusStartup(&s_token, &input, nullptr) != Gdiplus::Ok)
+      s_token = 0;
+  }
+  if (!s_token) return false;
+
+  // Stage the bytes in an HGLOBAL-backed IStream for GDI+ to decode.
+  HGLOBAL hg = ::GlobalAlloc(GMEM_MOVEABLE, len);
+  if (!hg) return false;
+  void* p = ::GlobalLock(hg);
+  if (!p) {
+    ::GlobalFree(hg);
+    return false;
+  }
+  memcpy(p, data, len);
+  ::GlobalUnlock(hg);
+
+  bool ok = false;
+  IStream* stream = nullptr;
+  // FALSE => we keep ownership of hg and free it below.
+  if (::CreateStreamOnHGlobal(hg, FALSE, &stream) == S_OK && stream) {
+    Gdiplus::Bitmap bmp(stream, FALSE);
+    if (bmp.GetLastStatus() == Gdiplus::Ok) {
+      HBITMAP hbmp = nullptr;
+      if (bmp.GetHBITMAP(Gdiplus::Color(), &hbmp) == Gdiplus::Ok && hbmp) {
+        BITMAP bm;
+        if (::GetObject(hbmp, sizeof(bm), &bm) && bm.bmWidth > 0 &&
+            bm.bmHeight > 0) {
+          BITMAPINFOHEADER bi = {};
+          bi.biSize = sizeof(bi);
+          bi.biWidth = bm.bmWidth;
+          bi.biHeight = -bm.bmHeight;  // top-down
+          bi.biPlanes = 1;
+          bi.biBitCount = 32;
+          bi.biCompression = BI_RGB;
+          size_t stride = ((static_cast<size_t>(bm.bmWidth) * 32 + 31) / 32) * 4;
+          size_t pixLen = stride * static_cast<size_t>(bm.bmHeight);
+          std::vector<unsigned char> pixels(pixLen);
+          HDC hdc = ::GetDC(nullptr);
+          if (hdc &&
+              ::GetDIBits(hdc, hbmp, 0, static_cast<UINT>(bm.bmHeight),
+                          pixels.data(),
+                          reinterpret_cast<BITMAPINFO*>(&bi),
+                          DIB_RGB_COLORS)) {
+            size_t total = sizeof(BITMAPINFOHEADER) + pixLen;
+            HGLOBAL hclip = ::GlobalAlloc(GMEM_MOVEABLE, total);
+            if (hclip) {
+              void* cp = ::GlobalLock(hclip);
+              if (cp) {
+                memcpy(cp, &bi, sizeof(bi));
+                memcpy(static_cast<char*>(cp) + sizeof(bi), pixels.data(),
+                       pixLen);
+                ::GlobalUnlock(hclip);
+                if (::OpenClipboard(nullptr)) {
+                  ::EmptyClipboard();
+                  if (::SetClipboardData(CF_DIB, hclip)) ok = true;
+                  ::CloseClipboard();
+                }
+                if (!ok) ::GlobalFree(hclip);
+              } else {
+                ::GlobalFree(hclip);
+              }
+            }
+          }
+          if (hdc) ::ReleaseDC(nullptr, hdc);
+        }
+        ::DeleteObject(hbmp);
+      }
+    }
+    stream->Release();
+  }
+  ::GlobalFree(hg);
+  return ok;
 }
 
 }  // namespace dialogs

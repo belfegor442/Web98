@@ -179,6 +179,51 @@ class PageSaver : public CefURLRequestClient {
   DISALLOW_COPY_AND_ASSIGN(PageSaver);
 };
 
+// Fetch a single image and put its decoded pixels on the clipboard (CF_DIB)
+// so "Copy Image" copies the image itself rather than its URL. Kept alive by
+// CEF until OnRequestComplete, same as PageSaver.
+class CopyImageClient : public CefURLRequestClient {
+ public:
+  static void Run(CefRefPtr<CefBrowser> browser, const std::string& url) {
+    CefRefPtr<CopyImageClient> c = new CopyImageClient(browser);
+    c->Start(url);
+  }
+
+  void OnRequestComplete(CefRefPtr<CefURLRequest> request) override {
+    bool ok = request->GetRequestStatus() == UR_SUCCESS && !body_.empty();
+    if (ok) dialogs::setClipboardImage(body_.data(), body_.size());
+    else if (!body_.empty()) dialogs::setClipboardText(lastUrl_);  // fallback
+  }
+  void OnUploadProgress(CefRefPtr<CefURLRequest> r, int64_t c, int64_t t) override {}
+  void OnDownloadProgress(CefRefPtr<CefURLRequest> r, int64_t c, int64_t t) override {}
+  void OnDownloadData(CefRefPtr<CefURLRequest> r, const void* data, size_t len) override {
+    body_.append(static_cast<const char*>(data), len);
+  }
+  bool GetAuthCredentials(bool isProxy, const CefString& host, int port,
+                          const CefString& realm, const CefString& scheme,
+                          CefRefPtr<CefAuthCallback> callback) override {
+    return false;
+  }
+
+ private:
+  explicit CopyImageClient(CefRefPtr<CefBrowser> browser) {
+    if (browser && browser->GetHost())
+      ctx_ = browser->GetHost()->GetRequestContext();
+  }
+  void Start(const std::string& url) {
+    lastUrl_ = url;
+    CefRefPtr<CefRequest> req = CefRequest::Create();
+    req->SetURL(url);
+    req->SetMethod("GET");
+    CefURLRequest::Create(req, this, ctx_);
+  }
+
+  CefRefPtr<CefRequestContext> ctx_;
+  std::string body_, lastUrl_;
+  IMPLEMENT_REFCOUNTING(CopyImageClient);
+  DISALLOW_COPY_AND_ASSIGN(CopyImageClient);
+};
+
 void savePageTab(Tab* tab) {
   if (!tab) return;
   std::string suggested = sanitizeText(tab->title.empty() ? "page" : tab->title, 80);
@@ -843,7 +888,11 @@ void runContextCommand(const std::string& id, const Json& params,
     return;
   }
   if (id == "copy-image") {
-    dialogs::setClipboardText(strOf("srcURL"));
+    // Fetch and place the actual image pixels on the clipboard (CF_DIB);
+    // fall back to the URL text when it isn't a loadable resource.
+    std::string u = strOf("srcURL");
+    if (isLoadableUrl(u)) CopyImageClient::Run(b, u);
+    else dialogs::setClipboardText(u);
     return;
   }
   if (id == "cut") { editOp(b, "cut"); return; }

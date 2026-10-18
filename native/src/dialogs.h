@@ -53,5 +53,9 @@ bool authDialog(HWND owner, const std::string& title,
 void setClipboardText(const std::string& text);
 std::string getClipboardText();
 
+// Decode image bytes (PNG/JPEG/GIF/BMP via GDI+) and put them on the
+// clipboard as a DIB so they paste into editors. False on any failure.
+bool setClipboardImage(const void* data, size_t len);
+
 }  // namespace dialogs
 }  // namespace web98
