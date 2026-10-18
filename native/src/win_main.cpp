@@ -65,6 +65,11 @@ int runBrowser(HINSTANCE instance, LPWSTR cmd_line, int show_cmd,
   settings.no_sandbox = 1;
   // Single Win32 message loop: WndProcs and CEF callbacks share the thread.
   settings.multi_threaded_message_loop = 0;
+  // No per-process log files: Chromium logging adds constant small writes in
+  // the browser, renderer, GPU and utility processes (subprocesses inherit
+  // the disabled state, so --enable-logging disappears from their command
+  // lines too). Diagnostics come from the unit tests instead.
+  settings.log_severity = LOGSEVERITY_DISABLE;
   CefString(&settings.cache_path) = pathJoin(userDataDir(), "Cache");
   CefString(&settings.root_cache_path) = pathJoin(userDataDir(), "Cache");
   CefString(&settings.user_agent_product) = "Web98";

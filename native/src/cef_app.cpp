@@ -273,7 +273,39 @@ const char* kindName(BridgeKind k) {
 void Web98App::OnBeforeCommandLineProcessing(
     const CefString& process_type, CefRefPtr<CefCommandLine> command_line) {
   (void)process_type;
-  (void)command_line;
+  // Light-browsing profile: silence every subsystem that phones home or
+  // spins up background services. All standard Chromium switches; each is
+  // a harmless no-op where the subsystem is already compiled out of CEF.
+  static const char* kSilence[] = {
+      "no-first-run",
+      "disable-default-apps",
+      "disable-component-update",
+      "disable-domain-reliability",
+      "disable-client-side-phishing-detection",
+      "disable-sync",
+      "disable-background-networking",
+      "disable-breakpad",
+      "disable-metrics",
+      "disable-field-trial-config",
+      "disable-search-engine-choice-screen",
+      "disable-logging",
+  };
+  for (const char* s : kSilence) {
+    if (!command_line->HasSwitch(s)) command_line->AppendSwitch(s);
+  }
+  // Trim features the Alloy runtime never surfaces: translate UI, Cast
+  // discovery (background network scans), omnibox speculation/prerender
+  // (memory), and NTP interest-feed suggestions. Merge with whatever CEF
+  // already set so neither list replaces the other.
+  std::string features = command_line->GetSwitchValue("disable-features");
+  static const char* kMine =
+      "Translate,MediaRouter,OptimizationHints,InterestFeedContentSuggestions";
+  if (features.empty())
+    features = kMine;
+  else if (features.find(kMine) == std::string::npos &&
+           features.find("Translate") == std::string::npos)
+    features += std::string(",") + kMine;
+  command_line->AppendSwitchWithValue("disable-features", features);
 }
 
 void Web98App::OnContextInitialized() {
