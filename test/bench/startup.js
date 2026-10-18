@@ -17,11 +17,31 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const BENCH_PROFILE = path.join(os.tmpdir(), 'web98-bench-profile');
 const BENCH_ENV = Object.assign({}, process.env, { WEB98_USER_DATA: BENCH_PROFILE });
 
-function cpuReadMs() {
-  const ps =
-    '(Get-Process electron -ErrorAction SilentlyContinue | ForEach-Object { $_.TotalProcessorTime.TotalMilliseconds } | Measure-Object -Sum).Sum';
+function processTreePids(rootPid) {
+  if (!Number.isInteger(rootPid) || rootPid <= 0) return [];
+  const script =
+    "$ErrorActionPreference='SilentlyContinue'; " +
+    "$all=@(Get-CimInstance Win32_Process -Filter \"Name='electron.exe'\"); " +
+    "$ids=@([int]" + rootPid + "); " +
+    "do { $added=$false; foreach($p in $all) { " +
+    "if (($ids -contains [int]$p.ParentProcessId) -and -not ($ids -contains [int]$p.ProcessId)) " +
+    "{ $ids += [int]$p.ProcessId; $added=$true } } } while($added); " +
+    "$ids -join ','";
   try {
-    return parseFloat(execSync(`powershell -NoProfile -Command "${ps}"`).toString()) || 0;
+    const out = execSync('powershell -NoProfile -Command "' + script.replace(/"/g, '`"') + '"', { encoding: 'utf8' }).trim();
+    return out.split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0);
+  } catch (e) {
+    return [rootPid];
+  }
+}
+
+function cpuReadMs(rootPid) {
+  const pids = processTreePids(rootPid);
+  if (!pids.length) return 0;
+  const ps = '(Get-Process -Id ' + pids.join(',') +
+    ' -ErrorAction SilentlyContinue | ForEach-Object { $_.TotalProcessorTime.TotalMilliseconds } | Measure-Object -Sum).Sum';
+  try {
+    return parseFloat(execSync('powershell -NoProfile -Command "' + ps + '"').toString()) || 0;
   } catch (e) {
     return 0;
   }
@@ -36,20 +56,16 @@ function cpuPercentBetween(c1, w1, c2, w2) {
 // Whole-app CPU as % of one core (can exceed 100 across cores):
 // delta of TotalProcessorTime summed over all electron processes / wall time.
 async function electronCpuPercent(durationMs) {
-  const c1 = cpuReadMs();
+  const c1 = cpuReadMs(proc.pid);
   const w1 = Date.now();
   await sleep(durationMs);
-  const c2 = cpuReadMs();
+  const c2 = cpuReadMs(proc.pid);
   const w2 = Date.now();
   return cpuPercentBetween(c1, w1, c2, w2);
 }
 
-function electronProcessCount() {
-  try {
-    return parseInt(execSync('powershell -NoProfile -Command "(Get-Process electron -ErrorAction SilentlyContinue | Measure-Object).Count"').toString(), 10) || 0;
-  } catch (e) {
-    return -1;
-  }
+function electronProcessCount(rootPid) {
+  return processTreePids(rootPid).length;
 }
 
 async function waitForDebugger(timeoutMs) {
@@ -124,11 +140,11 @@ async function main() {
   results.idleRssMB = stats.rssMB;
   results.idleHeapMB = stats.heapMB;
   results.idleCpuPercent = await electronCpuPercent(1500);
-  results.procsIdle = electronProcessCount();
+  results.procsIdle = electronProcessCount(proc.pid);
 
   /* --- 3. tab switch latency (5 tabs with real pages, 20 switches) --- */
   const target = 'file:///' + path.join(ROOT, 'src', 'renderer', 'startpage.html').replace(/\\/g, '/');
-  const loadC1 = cpuReadMs();
+  const loadC1 = cpuReadMs(proc.pid);
   const loadW1 = Date.now();
   for (let i = 0; i < 4; i++) {
     const before = await chrome.evaluate(() => document.querySelectorAll('.ow-tab').length);
@@ -166,7 +182,7 @@ async function main() {
   }
   results.tabSwitchMedianMs = median(switchTimes);
   results.tabSwitchMaxMs = Math.max(...switchTimes);
-  results.loadCpuPercent = cpuPercentBetween(loadC1, loadW1, cpuReadMs(), Date.now());
+  results.loadCpuPercent = cpuPercentBetween(loadC1, loadW1, cpuReadMs(proc.pid), Date.now());
 
   /* --- 4. navigation latency (address bar -> committed, local page x5) --- */
   const navTimes = [];
@@ -189,7 +205,7 @@ async function main() {
   /* --- 5. memory after activity, then release check --- */
   const stats2 = await chrome.evaluate(() => window.web98.invoke('app:stats'));
   results.activeRssMB = stats2.rssMB;
-  results.procs5Tabs = electronProcessCount();
+  results.procs5Tabs = electronProcessCount(proc.pid);
 
   /* --- 6. close the 4 extra tabs, verify count + resource release --- */
   for (let i = 0; i < 4; i++) {
@@ -205,7 +221,7 @@ async function main() {
   const stats3 = await chrome.evaluate(() => window.web98.invoke('app:stats'));
   results.closedRssMB = stats3.rssMB;
   results.tabCloseReleaseMB = Math.round((results.activeRssMB - results.closedRssMB) * 10) / 10;
-  results.procsAfterClose = electronProcessCount();
+  results.procsAfterClose = electronProcessCount(proc.pid);
 
   console.log('Web98 benchmark');
   console.log('  startup (debugger up):   ' + results.debuggerUpMs + ' ms');
