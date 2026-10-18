@@ -140,8 +140,9 @@ function sanitizeEngines(list) {
 }
 
 function isGrantOrigin(origin) {
+  // Opaque origins serialize as "null" and are shared by unrelated contexts;
+  // persisting a grant for that string could authorize another opaque page.
   if (typeof origin !== 'string') return false;
-  if (origin === 'null') return true;
   return /^https?:\/\/[^\s]{1,300}$/.test(origin);
 }
 
