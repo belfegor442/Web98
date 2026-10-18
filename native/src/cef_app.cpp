@@ -293,6 +293,13 @@ void Web98App::OnBeforeCommandLineProcessing(
   for (const char* s : kSilence) {
     if (!command_line->HasSwitch(s)) command_line->AppendSwitch(s);
   }
+  // Hardware acceleration toggle from Settings (browser process only;
+  // subprocesses inherit these switches). Changing it requires a restart.
+  if (process_type.empty() &&
+      !AppCore::get().settingsModel().getBool("hwAccel", true)) {
+    command_line->AppendSwitch("disable-gpu");
+    command_line->AppendSwitch("disable-gpu-compositing");
+  }
   // Trim features the Alloy runtime never surfaces: translate UI, Cast
   // discovery (background network scans), omnibox speculation/prerender
   // (memory), and NTP interest-feed suggestions. Merge with whatever CEF

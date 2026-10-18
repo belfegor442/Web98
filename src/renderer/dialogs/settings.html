@@ -263,6 +263,10 @@
           <fieldset class="w98-group grp">
             <legend>Performance</legend>
             <label class="w98-check">
+              <input type="checkbox" id="ck-hw" checked />
+              Hardware acceleration (GPU) — restart Web98 to apply
+            </label>
+            <label class="w98-check">
               <input type="checkbox" id="ck-sleep" checked />
               Sleep inactive background tabs (frees memory)
             </label>
@@ -336,6 +340,7 @@
         var ckLinks = document.getElementById('ck-links');
         var ckThrob = document.getElementById('ck-throb');
         var ckSleep = document.getElementById('ck-sleep');
+        var ckHw = document.getElementById('ck-hw');
         var selSleep = document.getElementById('sel-sleepdelay');
         var afIds = ['first', 'last', 'company', 'address1', 'address2',
                      'city', 'state', 'zip', 'country', 'phone', 'email'];
@@ -351,6 +356,7 @@
           pending.focusOutlines = ckFocus.checked;
           pending.linksBar = ckLinks.checked;
           pending.throbber = ckThrob.checked;
+          pending.hwAccel = ckHw.checked;
           pending.sleepTabs = ckSleep.checked;
           pending.sleepTabsDelay = Number(selSleep.value) || 300;
           pending.downloadsDir = inDl.value.trim() || null;
@@ -382,6 +388,7 @@
           ckFocus.checked = !!pending.focusOutlines;
           ckLinks.checked = !!pending.linksBar;
           ckThrob.checked = pending.throbber !== false;
+          ckHw.checked = pending.hwAccel !== false;
           ckSleep.checked = pending.sleepTabs !== false;
           selSleep.value = String(pending.sleepTabsDelay || 300);
           if (selSleep.selectedIndex < 0) selSleep.value = '300';
@@ -483,6 +490,7 @@
             focusOutlines: pending.focusOutlines,
             linksBar: pending.linksBar,
             throbber: pending.throbber,
+            hwAccel: pending.hwAccel,
             sleepTabs: pending.sleepTabs,
             sleepTabsDelay: pending.sleepTabsDelay,
             downloadsDir: pending.downloadsDir,

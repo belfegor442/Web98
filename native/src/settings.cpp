@@ -239,9 +239,9 @@ bool sanitizeSettingsPatchValue(const std::string& key, const Json& in, Json& ou
     return false;  // non-array silently ignored (JS: no out, no rejected)
   }
   if (key == "alwaysAskWhere" || key == "animEnabled" || key == "focusOutlines" ||
-      key == "linksBar" || key == "popupBlocker" || key == "sessionRestore" ||
-      key == "sleepTabs" || key == "statusBar" || key == "throbber" ||
-      key == "toolbarVisible") {
+      key == "hwAccel" || key == "linksBar" || key == "popupBlocker" ||
+      key == "sessionRestore" || key == "sleepTabs" || key == "statusBar" ||
+      key == "throbber" || key == "toolbarVisible") {
     if (in.isBool()) {
       out = in;
       return true;
@@ -426,6 +426,7 @@ void SettingsModel::initEmpty() {
   cache_.obj.emplace_back("animEnabled", Json::makeBool(true));
   cache_.obj.emplace_back("alwaysAskWhere", Json::makeBool(false));
   cache_.obj.emplace_back("focusOutlines", Json::makeBool(false));
+  cache_.obj.emplace_back("hwAccel", Json::makeBool(true));
   cache_.obj.emplace_back("linksBar", Json::makeBool(false));
   cache_.obj.emplace_back("popupBlocker", Json::makeBool(true));
   cache_.obj.emplace_back("sessionRestore", Json::makeBool(true));
