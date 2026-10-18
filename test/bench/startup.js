@@ -17,12 +17,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const BENCH_PROFILE = path.join(os.tmpdir(), 'web98-bench-profile');
 const BENCH_ENV = Object.assign({}, process.env, { WEB98_USER_DATA: BENCH_PROFILE });
 
-function killStrayElectrons() {
-  try {
-    execSync('taskkill /F /IM electron.exe /T', { stdio: 'ignore' });
-  } catch (e) { /* no stray processes */ }
-}
-
 function cpuReadMs() {
   const ps =
     '(Get-Process electron -ErrorAction SilentlyContinue | ForEach-Object { $_.TotalProcessorTime.TotalMilliseconds } | Measure-Object -Sum).Sum';
@@ -91,8 +85,7 @@ function median(nums) {
 
 async function main() {
   const results = {};
-  killStrayElectrons();
-  await sleep(1200); // let the OS settle after killing strays before spawning
+  // Never terminate unrelated Electron applications; this benchmark owns only its child process.
 
   /* --- 1. cold startup (wall time spawn -> debugger + ready log) --- */
   let t0 = Date.now();
