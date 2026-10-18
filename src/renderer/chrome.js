@@ -576,10 +576,21 @@
   $('addr-drop').addEventListener('mousedown', function (e) {
     e.preventDefault();
     if (activeFloat && activeFloat.id === 'addr-list') { closeSuggest(); return; }
-    invoke('history:list', { limit: 12 }).then(function (rows) {
-      renderSuggest(rows.map(function (h) {
-        return { title: h.title || h.url, url: h.url, type: 'history' };
-      }));
+    // Dropdown shows Favorites first, then recent history (classic IE style).
+    Promise.all([
+      invoke('bookmarks:list'),
+      invoke('history:list', { limit: 12 })
+    ]).then(function (r) {
+      var bms = (r[0] || []).filter(function (b) { return b.url; }).slice(0, 6)
+        .map(function (b) { return { title: b.name || b.url, url: b.url, type: 'bookmark' }; });
+      var seen = {};
+      bms.forEach(function (b) { seen[b.url] = true; });
+      var hist = (r[1] || []).filter(function (h) {
+        if (seen[h.url]) return false;
+        seen[h.url] = true;
+        return true;
+      }).map(function (h) { return { title: h.title || h.url, url: h.url, type: 'history' }; });
+      renderSuggest(bms.concat(hist));
     });
   });
   $('btn-go').addEventListener('click', go);
