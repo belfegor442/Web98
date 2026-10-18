@@ -29,12 +29,6 @@ function ps(script) {
   );
 }
 
-function killStrayElectrons() {
-  try {
-    execFileSync('taskkill', ['/F', '/IM', 'electron.exe', '/T'], { stdio: 'ignore', windowsHide: true });
-  } catch (e) { /* none running */ }
-}
-
 /** Raise the app window so visibility measurements are not occluded. */
 function raiseAppWindow(pid) {
   ps('$w = New-Object -ComObject WScript.Shell; [void]$w.AppActivate(' + pid + '); Start-Sleep -Milliseconds 200; [void]$w.AppActivate(' + pid + ')');
@@ -228,8 +222,7 @@ async function main() {
   let proc = null;
   let browser = null;
 
-  killStrayElectrons();
-  await sleep(1200);
+  // Never terminate unrelated Electron applications; this benchmark owns only its child process.
 
   try {
     /* ---- 1. startup + idle ---- */
