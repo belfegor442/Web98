@@ -99,7 +99,8 @@ std::string sanitizeText(const std::string& v, size_t max) {
 }
 
 bool isGrantOrigin(const std::string& origin) {
-  if (origin == "null") return true;
+  // Opaque origins serialize as "null" and may refer to unrelated contexts.
+  // Never persist a permission grant under this ambiguous identifier.
   static const std::regex re("^https?://[^\\s]{1,300}$");
   return std::regex_match(origin, re);
 }
