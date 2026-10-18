@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "cef_client.h"
+#include "include/cef_registration.h"
 #include "json.h"
 
 namespace web98 {
@@ -42,6 +43,17 @@ struct Tab {
   // through the navigation policy (Electron's will-navigate does not fire
   // for programmatic loads).
   std::string expectedNav;
+
+  // Memory saver (sleeping tabs): the browser was discarded to free the
+  // renderer's memory while the strip entry (url/title/favicon) survives.
+  // setActive reloads the URL on wake; savedScroll is re-applied after load.
+  bool slept = false;
+  double savedScroll = 0;
+  int64_t lastActiveMs = 0;
+  // CDP scroll/audio probe in flight (guards the discard decision).
+  bool probeInFlight = false;
+  int probeMsgId = 0;
+  CefRefPtr<CefRegistration> devtoolsReg;
 
   bool hasBrowser() const { return client.get() != nullptr; }
 };
@@ -110,6 +122,12 @@ class TabManager {
   void OnTabCreated(Tab* tab, CefRefPtr<CefBrowser> browser);
   void OnTabClosed(Tab* tab);
 
+  // --- memory saver (sleeping tabs) ----------------------------------------
+  // CDP method result for a tab's sleep probe (scroll + audio playback);
+  // called by the per-tab DevTools observer.
+  void OnDevToolsResult(int tabId, int messageId, bool success,
+                        const std::string& json);
+
   // Chrome-driven content rectangle (viewport of the chrome page).
   int boundsX() const { return boundsX_; }
   int boundsY() const { return boundsY_; }
@@ -123,6 +141,11 @@ class TabManager {
   void syncVisibility();
   void flushPending();
   void scheduleFlush(int delayMs);
+  // Memory saver heartbeat: sleeps idle background tabs past the threshold.
+  void scheduleSweep(int delayMs);
+  void sweep();
+  bool startSleepProbe(Tab* t);
+  void sleepTab(Tab* t);
   static std::string zoneFor(const std::string& url);
   void commitHistory(Tab* tab);
 
@@ -150,6 +173,9 @@ class TabManager {
   bool flushScheduled_ = false;
   int flushToken_ = 0;
   int flushJobId_ = 0;  // tab whose background load is in flight
+
+  // Memory saver sweep (self-perpetuating while the window lives).
+  bool sweepScheduled_ = false;
 
   // Coalescing state.
   bool tabsEmitScheduled_ = false;

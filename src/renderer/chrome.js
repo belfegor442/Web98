@@ -684,9 +684,9 @@
     }
     tabs.forEach(function (t, i) {
       var row = rows[i];
-      var cls = 'ow-tab' + (t.active ? ' is-active' : '') + (t.loading ? ' is-loading' : '') + (t.pinned ? ' is-pinned' : '');
+      var cls = 'ow-tab' + (t.active ? ' is-active' : '') + (t.loading ? ' is-loading' : '') + (t.pinned ? ' is-pinned' : '') + (t.slept ? ' is-sleeping' : '');
       if (row.el.className !== cls) row.el.className = cls;
-      row.el.title = t.title || t.url;
+      row.el.title = (t.title || t.url) + (t.slept ? ' \u2014 sleeping (click to wake)' : '');
       var spinCls = 'ow-tab__spinner' + (t.loading ? ' is-active' : '');
       if (row.spinner.className !== spinCls) row.spinner.className = spinCls;
       var bg = (t.favicon && /^data:|^https?:/i.test(t.favicon)) ? 'url("' + t.favicon + '")' : '';

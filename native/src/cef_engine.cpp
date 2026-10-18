@@ -1,6 +1,7 @@
 #include "cef_engine.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <regex>
 
 #include "app_core.h"
@@ -46,7 +47,50 @@ HWND hwndOf(Tab* t) {
   return reinterpret_cast<HWND>(host->GetWindowHandle());
 }
 
+// Sleep threshold in ms. WEB98_SLEEP_DELAY_MS (test hook) overrides the
+// user setting so verification scripts can exercise the full cycle fast.
+int64_t sleepDelayMs() {
+  char env[32];
+  DWORD n = ::GetEnvironmentVariableA("WEB98_SLEEP_DELAY_MS", env, sizeof(env));
+  if (n > 0 && n < sizeof(env)) {
+    long v = std::atol(env);
+    if (v >= 0) return v;
+  }
+  double sec =
+      AppCore::get().settingsModel().getNumber("sleepTabsDelay", 300);
+  if (sec < 30) sec = 30;
+  if (sec > 43200) sec = 43200;
+  return static_cast<int64_t>(sec * 1000);
+}
+
 }  // namespace
+
+// Delivers CDP method results (the pre-discard scroll/audio probe) back to
+// the TabManager. Guarded by the manager's alive token: the observer can
+// outlive a browser teardown that races window destruction.
+class SleepProbeObserver : public CefDevToolsMessageObserver {
+ public:
+  SleepProbeObserver(TabManager* mgr, int tabId, std::weak_ptr<int> alive)
+      : mgr_(mgr), tabId_(tabId), alive_(std::move(alive)) {}
+
+  void OnDevToolsMethodResult(CefRefPtr<CefBrowser> browser, int message_id,
+                              bool success, const void* result,
+                              size_t result_size) override {
+    (void)browser;
+    if (alive_.expired() || !mgr_) return;
+    mgr_->OnDevToolsResult(
+        tabId_, message_id, success,
+        result ? std::string(static_cast<const char*>(result), result_size)
+               : std::string());
+  }
+
+ private:
+  TabManager* mgr_;
+  int tabId_;
+  std::weak_ptr<int> alive_;
+  IMPLEMENT_REFCOUNTING(SleepProbeObserver);
+  DISALLOW_COPY_AND_ASSIGN(SleepProbeObserver);
+};
 
 TabManager::TabManager(MainWindow* win, EmitFn emit)
     : win_(win), emit_(std::move(emit)) {}
@@ -85,6 +129,7 @@ Json TabManager::list() const {
     o.obj.emplace_back("loading", Json::makeBool(t->loading));
     o.obj.emplace_back("progress", Json::makeNumber(t->progress));
     o.obj.emplace_back("pinned", Json::makeBool(t->pinned));
+    o.obj.emplace_back("slept", Json::makeBool(t->slept));
     o.obj.emplace_back("active", Json::makeBool(t->id == activeId_));
     out.arr.push_back(std::move(o));
   }
@@ -159,7 +204,9 @@ Tab* TabManager::create(const std::string& url, bool activate) {
   Tab* tab = owned.get();
   tab->id = nextId_++;
   tab->zoom = AppCore::get().settingsModel().getNumber("zoom", 1);
+  tab->lastActiveMs = nowMs();
   tabs_.push_back(std::move(owned));
+  scheduleSweep(2000);  // memory saver heartbeat (self-perpetuating)
 
   if (!url.empty()) {
     if (isSafeExternalUrl(url)) {
@@ -191,10 +238,21 @@ void TabManager::setActive(int id) {
   if (!tab) return;
   if (!tab->client) {
     // Queued background tab (or a brand-new one): materialize it now.
+    // A slept (discarded) tab reloads its saved URL on wake.
     std::string queued = tab->pendingUrl;
     tab->pendingUrl.clear();
+    if (queued.empty() && tab->slept) queued = tab->url;
     ensureBrowser(tab, queued);
+    if (tab->slept) {
+      tab->slept = false;
+      tab->loading = true;  // spinner while the renderer reboots
+      tab->progress = 0.05;
+      tab->progressBucket = -1;
+      tab->error = Json::makeNull();
+      emitTabs();
+    }
   }
+  tab->lastActiveMs = nowMs();  // memory saver: foreground clock starts now
   if (activeId_ == id) {
     syncVisibility();
     HWND h = hwndOf(tab);
@@ -202,6 +260,9 @@ void TabManager::setActive(int id) {
     navState(tab);
     return;
   }
+  // The outgoing tab just went background: its sleep timer starts now
+  // (inactivity is measured from the switch-away, not the switch-to).
+  if (Tab* prev = get(activeId_)) prev->lastActiveMs = nowMs();
   activeId_ = id;
   syncVisibility();
   HWND h = hwndOf(tab);
@@ -303,6 +364,13 @@ void TabManager::OnTabCreated(Tab* tab, CefRefPtr<CefBrowser> browser) {
     return;
   }
   tab->client->SetBrowser(browser);
+  // Memory saver: watch for scroll/audio probe results (no DevTools window
+  // or remote-debugging session needed; CEF 154 delivers them to observers).
+  if (CefRefPtr<CefBrowserHost> host = browser->GetHost()) {
+    std::weak_ptr<int> weak = alive_;
+    tab->devtoolsReg =
+        host->AddDevToolsMessageObserver(new SleepProbeObserver(this, tab->id, weak));
+  }
   applyBounds(tab);
   syncVisibility();
   HWND h = hwndOf(tab);
@@ -320,6 +388,7 @@ void TabManager::OnTabClosed(Tab* tab) {
 bool TabManager::load(Tab* tab, const std::string& url) {
   if (!tab || !tab->client || !tab->client->browser()) return false;
   tab->pendingUrl.clear();
+  tab->savedScroll = 0;  // fresh navigation supersedes a wake restore
   if (isSafeExternalUrl(url)) {
     dialogs::openExternalUrl(url);
     return true;
@@ -446,6 +515,19 @@ void TabManager::OnFaviconChange(Tab* tab, const std::string& iconUrl) {
 }
 
 void TabManager::OnLoadEnd(Tab* tab) {
+  // Memory saver: re-apply the scroll position captured before the tab was
+  // discarded (Chrome restores scroll the same way after a discard reload).
+  if (tab && tab->savedScroll > 0 && tab->client && tab->client->browser()) {
+    double y = tab->savedScroll;
+    tab->savedScroll = 0;
+    CefRefPtr<CefBrowserHost> host = tab->client->browser()->GetHost();
+    if (host) {
+      CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
+      params->SetString("expression",
+                        "window.scrollTo(0," + std::to_string(static_cast<int>(y)) + ")");
+      host->ExecuteDevToolsMethod(0, "Runtime.evaluate", params);
+    }
+  }
   // A background-load turn completed: schedule the next one (tabs.js uses
   // did-finish-load/did-fail-load plus a 15s watchdog).
   if (tab && flushJobId_ != 0 && tab->id == flushJobId_) {
@@ -577,6 +659,115 @@ void TabManager::flushPending() {
         scheduleFlush(100);
       },
       15000);
+}
+
+/* ------------------------- memory saver (sleep) --------------------------- */
+
+void TabManager::scheduleSweep(int delayMs) {
+  if (sweepScheduled_) return;
+  sweepScheduled_ = true;
+  std::weak_ptr<int> weak = alive_;
+  PostUiDelayed(
+      [this, weak]() {
+        if (weak.expired()) return;
+        sweepScheduled_ = false;
+        sweep();
+      },
+      delayMs);
+}
+
+void TabManager::sweep() {
+  // Self-perpetuating heartbeat while the window lives (alive_ guard above).
+  if (win_) {
+    bool enabled = AppCore::get().settingsModel().getBool("sleepTabs", true);
+    if (enabled) {
+      const int64_t delay = sleepDelayMs();
+      const int64_t now = nowMs();
+      for (auto& sp : tabs_) {
+        Tab* t = sp.get();
+        if (!t || t->id == activeId_ || t->pinned || t->slept) continue;
+        if (!t->client || t->loading || t->probeInFlight) continue;
+        if (t->lastActiveMs == 0) t->lastActiveMs = now;
+        if (now - t->lastActiveMs < delay) continue;
+        // Idle threshold reached: ask the renderer for scroll + audio state,
+        // then discard (or re-check soon if media is still playing).
+        startSleepProbe(t);
+      }
+    }
+    scheduleSweep(2000);
+  }
+}
+
+bool TabManager::startSleepProbe(Tab* t) {
+  if (!t || !t->client) return false;
+  CefRefPtr<CefBrowser> b = t->client->browser();
+  if (!b || !b->GetHost()) return false;
+  CefRefPtr<CefDictionaryValue> params = CefDictionaryValue::Create();
+  params->SetString(
+      "expression",
+      "(()=>{try{return JSON.stringify({y:window.scrollY|0,"
+      "a:Array.prototype.some.call(document.querySelectorAll('video,audio'),"
+      "function(m){return !m.paused && !m.ended;})})}"
+      "catch(e){return '{\"y\":0,\"a\":false}'}})()");
+  params->SetBool("returnByValue", true);
+  int id = b->GetHost()->ExecuteDevToolsMethod(0, "Runtime.evaluate", params);
+  if (!id) return false;
+  t->probeInFlight = true;
+  t->probeMsgId = id;
+  return true;
+}
+
+void TabManager::OnDevToolsResult(int tabId, int messageId, bool success,
+                                  const std::string& json) {
+  Tab* t = get(tabId);
+  if (!t || !t->probeInFlight || t->probeMsgId != messageId) return;
+  t->probeInFlight = false;
+  t->probeMsgId = 0;
+  // The tab was activated/closed/reloaded while the probe was in flight.
+  if (!t->client || t->slept || t->id == activeId_) return;
+  bool audio = false;
+  double y = 0;
+  if (success) {
+    // {"result":{"type":"string","value":"{\"y\":123,\"a\":false}"}}
+    Json outer;
+    if (Json::parse(json, outer)) {
+      if (const Json* r = outer.find("result")) {
+        if (const Json* v = r->find("value")) {
+          Json inner;
+          if (v->isString() && Json::parse(v->str, inner)) {
+            if (const Json* iy = inner.find("y")) y = iy->numberOr(0);
+            if (const Json* ia = inner.find("a")) audio = ia->boolOr(false);
+          }
+        }
+      }
+    }
+  }
+  if (audio) {
+    // Media playing: never kill the sound. Re-check in 30s.
+    t->lastActiveMs = nowMs() + 30000;
+    return;
+  }
+  t->savedScroll = y;
+  sleepTab(t);
+}
+
+void TabManager::sleepTab(Tab* t) {
+  if (!t || !t->client || t->slept) return;
+  if (t->id == activeId_ || t->loading) return;
+  CefRefPtr<CefBrowser> b = t->client->browser();
+  // Discard: Detach stops lifecycle callbacks (the strip entry with URL,
+  // title and favicon survives; setActive reloads it on wake). Force close
+  // skips beforeunload like Chrome's Memory Saver discard.
+  t->client->Detach();
+  if (b && b->GetHost()) b->GetHost()->CloseBrowser(true);
+  t->client = nullptr;
+  t->devtoolsReg = nullptr;
+  t->probeInFlight = false;
+  t->probeMsgId = 0;
+  t->loading = false;
+  t->progress = 1;
+  t->slept = true;
+  emitTabs();
 }
 
 /* -------------------------------- events --------------------------------- */

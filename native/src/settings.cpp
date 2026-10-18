@@ -240,12 +240,26 @@ bool sanitizeSettingsPatchValue(const std::string& key, const Json& in, Json& ou
   }
   if (key == "alwaysAskWhere" || key == "animEnabled" || key == "focusOutlines" ||
       key == "linksBar" || key == "popupBlocker" || key == "sessionRestore" ||
-      key == "statusBar" || key == "throbber" || key == "toolbarVisible") {
+      key == "sleepTabs" || key == "statusBar" || key == "throbber" ||
+      key == "toolbarVisible") {
     if (in.isBool()) {
       out = in;
       return true;
     }
     return reject();
+  }
+  if (key == "sleepTabsDelay") {
+    // Memory saver: seconds before an idle background tab sleeps (30s..12h).
+    double n = 300;
+    if (in.isNumber())
+      n = in.num;
+    else if (in.isString() && !trim(in.str).empty()) {
+      char* end = nullptr;
+      n = std::strtod(trim(in.str).c_str(), &end);
+      if (!end || *end != '\0') n = 300;
+    }
+    out = Json::makeNumber(clampNumber(n, 30, 43200, 300));
+    return true;
   }
   if (key == "zoom") {
     double n = 1;
@@ -415,6 +429,8 @@ void SettingsModel::initEmpty() {
   cache_.obj.emplace_back("linksBar", Json::makeBool(false));
   cache_.obj.emplace_back("popupBlocker", Json::makeBool(true));
   cache_.obj.emplace_back("sessionRestore", Json::makeBool(true));
+  cache_.obj.emplace_back("sleepTabs", Json::makeBool(true));
+  cache_.obj.emplace_back("sleepTabsDelay", Json::makeNumber(300));
   cache_.obj.emplace_back("statusBar", Json::makeBool(true));
   cache_.obj.emplace_back("throbber", Json::makeBool(true));
   cache_.obj.emplace_back("toolbarVisible", Json::makeBool(true));

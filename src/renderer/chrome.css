@@ -134,6 +134,13 @@ body.no-throb .ow-throbber.is-active { animation: none !important; }
 .ow-tab.is-pinned .ow-tab__close {
   display: none;
 }
+/* Memory saver: sleeping tabs fade like Edge's sleeping tabs. */
+.ow-tab.is-sleeping {
+  opacity: 0.55;
+}
+.ow-tab.is-sleeping .ow-tab__icon {
+  filter: grayscale(1);
+}
 .ow-tab__icon {
   width: 14px;
   height: 14px;

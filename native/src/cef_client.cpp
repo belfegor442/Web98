@@ -629,8 +629,23 @@ bool Web98Client::DoClose(CefRefPtr<CefBrowser> browser) {
   // browser's top-level parent when DoClose returns false, and on Windows
   // WM_CLOSE bubbles up the child hierarchy until it reaches a non-child
   // window -- which would destroy the whole frame. Return true so CEF does
-  // NOT propagate the close to our parent window; we tear down the browser
-  // child ourselves (via CloseBrowser in TabManager/MainWindow).
+  // NOT propagate the close to our parent window.
+  //
+  // With DoClose()==true CEF waits for THIS client to destroy the browser
+  // window; CloseBrowser() itself never does. The parent frame outlives a
+  // sleeping or closed tab, so nobody else would: OnBeforeClose never fires,
+  // the browser object and its renderer process leak for the rest of the
+  // session. Post the destruction ourselves -- asynchronously, because the
+  // window must outlive the DoClose call or CEF's close sequence would run
+  // re-entrant inside its own call stack.
+  HWND h = nullptr;
+  if (browser && browser->GetHost())
+    h = reinterpret_cast<HWND>(browser->GetHost()->GetWindowHandle());
+  if (h) {
+    PostUi([h] {
+      if (::IsWindow(h)) ::DestroyWindow(h);
+    });
+  }
   return true;
 }
 

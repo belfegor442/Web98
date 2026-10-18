@@ -260,6 +260,25 @@
               Animate the throbber while loading
             </label>
           </fieldset>
+          <fieldset class="w98-group grp">
+            <legend>Performance</legend>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-sleep" checked />
+              Sleep inactive background tabs (frees memory)
+            </label>
+            <label class="w98-check">
+              Put tabs to sleep after
+              <select class="w98-select" id="sel-sleepdelay" style="width: auto">
+                <option value="30">30 seconds</option>
+                <option value="60">1 minute</option>
+                <option value="300">5 minutes</option>
+                <option value="900">15 minutes</option>
+                <option value="1800">30 minutes</option>
+                <option value="3600">1 hour</option>
+                <option value="7200">2 hours</option>
+              </select>
+            </label>
+          </fieldset>
           <div class="pane-note">
             Advanced settings apply immediately. Some options are locked
             for security and cannot be changed.
@@ -316,6 +335,8 @@
         var ckFocus = document.getElementById('ck-focus');
         var ckLinks = document.getElementById('ck-links');
         var ckThrob = document.getElementById('ck-throb');
+        var ckSleep = document.getElementById('ck-sleep');
+        var selSleep = document.getElementById('sel-sleepdelay');
         var afIds = ['first', 'last', 'company', 'address1', 'address2',
                      'city', 'state', 'zip', 'country', 'phone', 'email'];
 
@@ -330,6 +351,8 @@
           pending.focusOutlines = ckFocus.checked;
           pending.linksBar = ckLinks.checked;
           pending.throbber = ckThrob.checked;
+          pending.sleepTabs = ckSleep.checked;
+          pending.sleepTabsDelay = Number(selSleep.value) || 300;
           pending.downloadsDir = inDl.value.trim() || null;
           pending.alwaysAskWhere = ckAskWhere.checked;
           var af = {};
@@ -359,6 +382,9 @@
           ckFocus.checked = !!pending.focusOutlines;
           ckLinks.checked = !!pending.linksBar;
           ckThrob.checked = pending.throbber !== false;
+          ckSleep.checked = pending.sleepTabs !== false;
+          selSleep.value = String(pending.sleepTabsDelay || 300);
+          if (selSleep.selectedIndex < 0) selSleep.value = '300';
           inDl.value = pending.downloadsDir || '';
           ckAskWhere.checked = !!pending.alwaysAskWhere;
           var af = pending.autofill || {};
@@ -457,6 +483,8 @@
             focusOutlines: pending.focusOutlines,
             linksBar: pending.linksBar,
             throbber: pending.throbber,
+            sleepTabs: pending.sleepTabs,
+            sleepTabsDelay: pending.sleepTabsDelay,
             downloadsDir: pending.downloadsDir,
             alwaysAskWhere: pending.alwaysAskWhere,
             autofill: pending.autofill
