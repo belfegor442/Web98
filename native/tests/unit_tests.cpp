@@ -244,6 +244,10 @@ void runSettings() {
   std::vector<std::string> rejected;
   CHECK(n, sanitizeSettingsPatchValue("zoom", Json::makeNumber(99), out, nullptr));
   CHECK(n, out.isNumber() && out.num <= 3.0);  // clamped
+  CHECK(n, sanitizeSettingsPatchValue("zoom", Json::makeString("1.5"), out, nullptr));
+  CHECK(n, out.isNumber() && out.num == 1.5);
+  CHECK(n, sanitizeSettingsPatchValue("sleepTabsDelay", Json::makeString("120"), out, nullptr));
+  CHECK(n, out.isNumber() && out.num == 120);
   CHECK(n, !sanitizeSettingsPatchValue("evil", Json::makeString("x"), out,
                                        &rejected));
   CHECK_EQ_INT(n, rejected.size(), 1);
