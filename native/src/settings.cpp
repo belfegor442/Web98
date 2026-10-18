@@ -255,8 +255,9 @@ bool sanitizeSettingsPatchValue(const std::string& key, const Json& in, Json& ou
     if (in.isNumber())
       n = in.num;
     else if (in.isString() && !trim(in.str).empty()) {
+      const std::string parsed = trim(in.str);
       char* end = nullptr;
-      n = std::strtod(trim(in.str).c_str(), &end);
+      n = std::strtod(parsed.c_str(), &end);
       if (!end || *end != '\0') n = 300;
     }
     out = Json::makeNumber(clampNumber(n, 30, 43200, 300));
@@ -267,8 +268,9 @@ bool sanitizeSettingsPatchValue(const std::string& key, const Json& in, Json& ou
     if (in.isNumber())
       n = in.num;
     else if (in.isString() && !trim(in.str).empty()) {
+      const std::string parsed = trim(in.str);
       char* end = nullptr;
-      n = std::strtod(trim(in.str).c_str(), &end);
+      n = std::strtod(parsed.c_str(), &end);
       if (!end || *end != '\0') n = 1;
     } else if (!in.isNumber()) {
       n = 1;
