@@ -28,7 +28,8 @@ function processTreePids(rootPid) {
     "{ $ids += [int]$p.ProcessId; $added=$true } } } while($added); " +
     "$ids -join ','";
   try {
-    const out = execSync('powershell -NoProfile -Command "' + script.replace(/"/g, '`"') + '"', { encoding: 'utf8' }).trim();
+    const encoded = Buffer.from(script, 'utf16le').toString('base64');
+    const out = execSync('powershell.exe -NoProfile -NonInteractive -EncodedCommand ' + encoded, { encoding: 'utf8' }).trim();
     return out.split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0);
   } catch (e) {
     return [rootPid];
@@ -41,7 +42,8 @@ function cpuReadMs(rootPid) {
   const ps = '(Get-Process -Id ' + pids.join(',') +
     ' -ErrorAction SilentlyContinue | ForEach-Object { $_.TotalProcessorTime.TotalMilliseconds } | Measure-Object -Sum).Sum';
   try {
-    return parseFloat(execSync('powershell -NoProfile -Command "' + ps + '"').toString()) || 0;
+    const encoded = Buffer.from(ps, 'utf16le').toString('base64');
+    return parseFloat(execSync('powershell.exe -NoProfile -NonInteractive -EncodedCommand ' + encoded).toString()) || 0;
   } catch (e) {
     return 0;
   }
@@ -55,11 +57,11 @@ function cpuPercentBetween(c1, w1, c2, w2) {
 
 // Whole-app CPU as % of one core (can exceed 100 across cores):
 // delta of TotalProcessorTime summed over all electron processes / wall time.
-async function electronCpuPercent(durationMs) {
-  const c1 = cpuReadMs(proc.pid);
+async function electronCpuPercent(durationMs, rootPid) {
+  const c1 = cpuReadMs(rootPid);
   const w1 = Date.now();
   await sleep(durationMs);
-  const c2 = cpuReadMs(proc.pid);
+  const c2 = cpuReadMs(rootPid);
   const w2 = Date.now();
   return cpuPercentBetween(c1, w1, c2, w2);
 }
@@ -139,7 +141,7 @@ async function main() {
   const stats = await chrome.evaluate(() => window.web98.invoke('app:stats'));
   results.idleRssMB = stats.rssMB;
   results.idleHeapMB = stats.heapMB;
-  results.idleCpuPercent = await electronCpuPercent(1500);
+  results.idleCpuPercent = await electronCpuPercent(1500, proc.pid);
   results.procsIdle = electronProcessCount(proc.pid);
 
   /* --- 3. tab switch latency (5 tabs with real pages, 20 switches) --- */
