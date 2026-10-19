@@ -1,5 +1,7 @@
 #include "session.h"
 
+#include <cmath>
+
 #include "safeurl.h"
 
 namespace web98 {
@@ -40,7 +42,8 @@ std::vector<SessionWindow> parseStoredSession(const Json& stored) {
           if (u.isString()) sw.urls.push_back(u.str);
       }
       const Json* active = w.find("active");
-      if (active && active->isNumber()) sw.active = static_cast<int>(active->num);
+      if (active && active->isNumber() && std::isfinite(active->num))
+        sw.active = static_cast<int>(active->num);
       const Json* pinned = w.find("pinned");
       if (pinned && pinned->isArray())
         for (const auto& p : pinned->arr) sw.pinned.push_back(p.boolOr(false));
@@ -56,7 +59,8 @@ std::vector<SessionWindow> parseStoredSession(const Json& stored) {
     for (const auto& u : urls->arr)
       if (u.isString()) sw.urls.push_back(u.str);
     const Json* active = stored.find("active");
-    if (active && active->isNumber()) sw.active = static_cast<int>(active->num);
+    if (active && active->isNumber() && std::isfinite(active->num))
+      sw.active = static_cast<int>(active->num);
     SessionWindow clean = sanitizeWindow(sw);
     if (!clean.urls.empty()) out.push_back(std::move(clean));
   }

@@ -103,7 +103,11 @@
 
         function render() {
           list.textContent = '';
-          function walk(parent, depth) {
+          function walk(parent, depth, seen) {
+            if (depth > 32) return; // cycle guard (defense in depth)
+            seen = seen || {};
+            if (seen[parent]) return;
+            seen[parent] = true;
             childrenOf(parent).forEach(function (b) {
               var row = document.createElement('div');
               row.className = 'row';
@@ -122,7 +126,7 @@
               grow.textContent = b.name;
               row.appendChild(grow);
               list.appendChild(row);
-              if (b.url === '' || b.url == null) walk(b.id, depth + 1);
+              if (b.url === '' || b.url == null) walk(b.id, depth + 1, seen);
             });
           }
           walk(0, 0);
@@ -193,8 +197,21 @@
         btnMoveto.addEventListener('click', function () {
           var item = sel.selected();
           if (!item) return;
-          // Folder picker: root ("Favorites") + every folder (no url).
+          // Folder picker: root ("Favorites") + every folder (no url),
+          // excluding the item itself and its descendants (cycle guard).
           var folders = all.filter(function (b) { return !b.url; });
+          var excluded = {};
+          if (!item.url) {
+            excluded[item.id] = true;
+            (function mark(parent) {
+              all.forEach(function (b) {
+                if ((b.parent || 0) === parent && b.id !== parent && !excluded[b.id]) {
+                  excluded[b.id] = true;
+                  mark(b.id);
+                }
+              });
+            })(item.id);
+          }
           var ov = document.createElement('div');
           ov.className = 'editor is-open';
           ov.style.zIndex = '5';
@@ -207,7 +224,7 @@
           optRoot.textContent = 'Favorites';
           selEl.appendChild(optRoot);
           folders.forEach(function (f) {
-            if (f.id === item.id) return; // can't move a folder into itself
+            if (excluded[f.id]) return;
             var o = document.createElement('option');
             o.value = String(f.id);
             o.textContent = f.name;

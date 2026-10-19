@@ -678,7 +678,10 @@
     }
     setStatus('Opening "' + query + '"...');
     if (api && typeof api.action === 'function') {
-      api.action('search', query).catch(function () {
+      api.action('search', query).then(function (r) {
+        // home:action resolves {ok:false} on failure instead of rejecting.
+        if (r && r.ok === false) throw new Error('search failed');
+      }).catch(function () {
         setStatus('Could not open this search. Use the address bar.');
         input.setCustomValidity('Web98 could not open this search. Use the address bar.');
         input.reportValidity();
@@ -693,7 +696,11 @@
       event.preventDefault();
       var a = link.getAttribute('data-action');
       setStatus('Opening ' + a + '...');
-      if (api && typeof api.action === 'function') api.action(a).catch(function () {});
+      if (api && typeof api.action === 'function') {
+        api.action(a).then(function (r) {
+          if (r && r.ok === false) setStatus('Could not open "' + a + '".');
+        }).catch(function () {});
+      }
     });
   });
   document.querySelectorAll('.col a[href^="http"], .feature a[href^="http"]').forEach(function (a) {

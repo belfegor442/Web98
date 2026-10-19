@@ -185,7 +185,12 @@
         : 'The page cannot be displayed';
   }
 
-  function refresh() { location.reload(); }
+  function refresh() {
+    // Retry the failed URL natively; reloading the error document itself
+    // would just re-display the same error. Fallback for safety.
+    if (window.web98cert && window.web98cert.refresh) window.web98cert.refresh();
+    else location.reload();
+  }
   document.getElementById('btn-primary').addEventListener('click', refresh);
   document.getElementById('link-refresh').addEventListener('click', function (e) {
     e.preventDefault();

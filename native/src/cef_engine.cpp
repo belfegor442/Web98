@@ -108,8 +108,13 @@ TabManager::~TabManager() {
 }
 
 std::string TabManager::zoneFor(const std::string& url) {
+  // Match only true loopback hosts: bare "localhost" (with optional port) or
+  // a full 127.0.0.0/8 quad. A bare prefix match would label attacker domains
+  // like http://127.com or http://localhost.evil.com as "Local intranet".
   static const std::regex re(
-      "^file:|^http://(localhost|127\\.)", std::regex_constants::icase);
+      "^file:|^https?://localhost([:/?#]|$)"
+      "|^https?://127(\\.[0-9]{1,3}){3}([:/?#]|$)",
+      std::regex_constants::icase);
   static const std::regex reWeb("^https?://", std::regex_constants::icase);
   if (std::regex_search(url, re)) return "Local intranet";
   if (std::regex_search(url, reWeb)) return "Internet zone";

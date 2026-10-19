@@ -346,6 +346,7 @@
                      'city', 'state', 'zip', 'country', 'phone', 'email'];
 
         function collect() {
+          if (!pending) return null;
           pending.homepage = inHome.value.trim() || pending.homepage;
           pending.searchEngine = inEngine.value;
           pending.toolbarVisible = ckToolbar.checked;
@@ -477,8 +478,12 @@
         });
 
         /* --- apply / ok / cancel --- */
+        var btnApply = document.getElementById('btn-apply');
+        var btnOk = document.getElementById('btn-ok');
+        btnApply.disabled = true;
+        btnOk.disabled = true;
         function apply() {
-          collect();
+          if (!collect()) return Promise.resolve();
           var patch = {
             homepage: pending.homepage,
             searchEngine: pending.searchEngine,
@@ -516,6 +521,8 @@
           current = s;
           pending = Object.assign({}, s);
           fill();
+          btnApply.disabled = false;
+          btnOk.disabled = false;
         });
         loadGrants();
         /* Live-update when settings change externally (View menu toggles). */

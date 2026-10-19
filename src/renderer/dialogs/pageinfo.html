@@ -76,7 +76,6 @@
     <script src="dlg.js"></script>
     <script>
       (function () {
-        if (window.dlg) window.dlg.init();
         var w = window.web98;
         if (!w) return;
         var addrEl = document.getElementById('addr');
@@ -112,9 +111,10 @@
             cookiesEl.textContent = '(no cookies)';
             return;
           }
+          var esc = (window.dlg && window.dlg.escapeHtml) || function (s) { return String(s == null ? '' : s); };
           cookiesEl.innerHTML = cookies.map(function (c) {
-            return '<div class="pi-cookie"><b>' + (c.name || '?') + '</b> = ' + (c.value || '') +
-                   (c.domain ? ' &nbsp;[' + c.domain + ']' : '') + '</div>';
+            return '<div class="pi-cookie"><b>' + esc(c.name || '?') + '</b> = ' + esc(c.value || '') +
+                   (c.domain ? ' &nbsp;[' + esc(c.domain) + ']' : '') + '</div>';
           }).join('');
         });
         w.invoke('pageinfo:load');

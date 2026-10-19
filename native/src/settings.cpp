@@ -123,7 +123,10 @@ bool sanitizeId(const Json& v, int64_t& out) {
   } else {
     return false;
   }
+  // Reject non-finite, negative, non-integer, and out-of-int64-range values
+  // (the range check matters: casting 1e300 to int64_t is UB).
   if (!std::isfinite(d) || d < 0 || d != std::floor(d)) return false;
+  if (d > 9223372036854774784.0) return false;  // <= INT64_MAX as double
   out = static_cast<int64_t>(d);
   return true;
 }

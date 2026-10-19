@@ -72,7 +72,8 @@ class PageSaver : public CefURLRequestClient {
   // --- CefURLRequestClient (UI thread; same as creator) --------------------
   void OnRequestComplete(CefRefPtr<CefURLRequest> request) override {
     std::string url = request->GetRequest()->GetURL().ToString();
-    bool ok = request->GetRequestStatus() == UR_SUCCESS && !currentBody_.empty();
+    bool ok = request->GetRequestStatus() == UR_SUCCESS && !currentBody_.empty() &&
+              !currentTooBig_;
     if (ok) {
       std::string mime = "application/octet-stream";
       if (request->GetResponse()) {
@@ -86,6 +87,7 @@ class PageSaver : public CefURLRequestClient {
     }
     currentBody_.clear();
     currentUrl_.clear();
+    currentTooBig_ = false;
     FetchNext();
   }
   void OnUploadProgress(CefRefPtr<CefURLRequest> request, int64_t c,
@@ -94,6 +96,15 @@ class PageSaver : public CefURLRequestClient {
                           int64_t t) override {}
   void OnDownloadData(CefRefPtr<CefURLRequest> request, const void* data,
                       size_t len) override {
+    // Cap each subresource so a hostile/broken server streaming a huge body
+    // cannot OOM the browser during Save Page; oversized fetches are treated
+    // as failures in OnRequestComplete and the original URL is kept.
+    constexpr size_t kMaxSubresource = 32 << 20;  // 32 MB
+    if (currentBody_.size() + len > kMaxSubresource) {
+      currentBody_.clear();
+      currentTooBig_ = true;
+      return;
+    }
     currentBody_.append(static_cast<const char*>(data), len);
   }
   bool GetAuthCredentials(bool isProxy, const CefString& host, int port,
@@ -175,6 +186,7 @@ class PageSaver : public CefURLRequestClient {
   std::map<std::string, std::string> dataUris_;
   size_t index_ = 0;
   std::string currentUrl_, currentBody_;
+  bool currentTooBig_ = false;
   IMPLEMENT_REFCOUNTING(PageSaver);
   DISALLOW_COPY_AND_ASSIGN(PageSaver);
 };
@@ -190,13 +202,21 @@ class CopyImageClient : public CefURLRequestClient {
   }
 
   void OnRequestComplete(CefRefPtr<CefURLRequest> request) override {
-    bool ok = request->GetRequestStatus() == UR_SUCCESS && !body_.empty();
+    bool ok = request->GetRequestStatus() == UR_SUCCESS && !body_.empty() &&
+              !tooBig_;
     if (ok) dialogs::setClipboardImage(body_.data(), body_.size());
-    else if (!body_.empty()) dialogs::setClipboardText(lastUrl_);  // fallback
+    else dialogs::setClipboardText(lastUrl_);  // fallback (also on oversize)
   }
   void OnUploadProgress(CefRefPtr<CefURLRequest> r, int64_t c, int64_t t) override {}
   void OnDownloadProgress(CefRefPtr<CefURLRequest> r, int64_t c, int64_t t) override {}
   void OnDownloadData(CefRefPtr<CefURLRequest> r, const void* data, size_t len) override {
+    // Same cap as PageSaver: a huge "image" body must not OOM Copy Image.
+    constexpr size_t kMaxImage = 64 << 20;  // 64 MB
+    if (body_.size() + len > kMaxImage) {
+      body_.clear();
+      tooBig_ = true;
+      return;
+    }
     body_.append(static_cast<const char*>(data), len);
   }
   bool GetAuthCredentials(bool isProxy, const CefString& host, int port,
@@ -220,6 +240,7 @@ class CopyImageClient : public CefURLRequestClient {
 
   CefRefPtr<CefRequestContext> ctx_;
   std::string body_, lastUrl_;
+  bool tooBig_ = false;
   IMPLEMENT_REFCOUNTING(CopyImageClient);
   DISALLOW_COPY_AND_ASSIGN(CopyImageClient);
 };

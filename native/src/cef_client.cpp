@@ -622,6 +622,9 @@ void Web98Client::OnAfterCreated(CefRefPtr<CefBrowser> browser) {
 void Web98Client::OnBeforeClose(CefRefPtr<CefBrowser> browser) {
   browser_ = nullptr;
   if (ctx_.tabs && ctx_.tab) ctx_.tabs->OnTabClosed(ctx_.tab);
+  // OnTabClosed destroys the Tab (the manager takes ownership), leaving
+  // ctx_.tab dangling; clear the context so any late callback is a no-op.
+  Detach();
 }
 
 bool Web98Client::DoClose(CefRefPtr<CefBrowser> browser) {

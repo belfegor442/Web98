@@ -251,7 +251,8 @@ std::string buildShim(const char* kind) {
       proceed: function (url) {
         if (typeof url !== 'string') return;
         post(false, 0, 'cert:proceed', JSON.stringify(url.slice(0, 8192)));
-      }
+      },
+      refresh: function () { post(false, 0, 'cert:refresh', 'null'); }
     };
   }
 })();

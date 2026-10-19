@@ -846,7 +846,8 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
       Json arr = Json::makeArray();
       int limit = 12;
       const Json* lv = arg.isObject() ? arg.find("limit") : nullptr;
-      if (lv && lv->isNumber()) limit = std::max(1, std::min((int)lv->num, 32));
+      if (lv && lv->isNumber())
+        limit = static_cast<int>(clampNumber(lv->num, 1, 32, 12));
       int n = 0;
       for (const auto& b : storage_.listQuickBookmarks()) {
         if (n++ >= limit) break;
@@ -1189,7 +1190,7 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
                              Json::makeString(CefString(&cookie.value).ToString()));
           c.obj.emplace_back("domain",
                              Json::makeString(CefString(&cookie.domain).ToString()));
-          list.obj.emplace_back("", c);
+          list.arr.push_back(std::move(c));
           if (dlg && count + 1 == total) dlg->emit("pageinfo:cookies", list);
           return true;
         }
@@ -1264,6 +1265,26 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
             : -1;
     if (browserId < 0) return;
     certs_.grant(std::to_string(browserId) + "|" + url);
+    tab->error = Json::makeNull();
+    tab->errorPageShown = false;
+    tab->expectedNav = url;
+    if (tab->client && tab->client->browser() &&
+        tab->client->browser()->GetMainFrame()) {
+      tab->client->browser()->GetMainFrame()->LoadURL(url);
+    }
+    return;
+  }
+
+  // Error page "Refresh": re-attempt the URL that failed instead of
+  // reloading the error document itself (which used to be a no-op loop).
+  if (channel == "cert:refresh") {
+    if (!isTab() || !ctx.tab || !ctx.tabs) return;
+    Tab* tab = ctx.tab;
+    if (!tab->error.isObject()) return;
+    std::string url = tab->url;
+    const Json* eu = tab->error.find("url");
+    if (eu && eu->isString() && !eu->str.empty()) url = eu->str;
+    if (url.empty()) return;
     tab->error = Json::makeNull();
     tab->errorPageShown = false;
     tab->expectedNav = url;

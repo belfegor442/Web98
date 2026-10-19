@@ -128,6 +128,7 @@
 
         function render(items) {
           var selected = sel.selected();
+          var found = false;
           list.textContent = '';
           var anyFinished = false;
           (items || []).forEach(function (d) {
@@ -164,8 +165,10 @@
             st.textContent = statusText(d);
             row.appendChild(st);
             list.appendChild(row);
-            if (selected && selected.id === d.id) sel.select(d);
+            if (selected && selected.id === d.id) { found = true; sel.select(d); }
           });
+          // Selection pointed at an item that vanished (e.g. Clear Finished).
+          if (selected && !found) { sel.clear(); updateButtons(null); }
           buttons.clear.disabled = !anyFinished;
           if (!items || !items.length) {
             var none = document.createElement('div');

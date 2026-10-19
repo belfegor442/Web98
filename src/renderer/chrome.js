@@ -532,7 +532,12 @@
     var q = addressInput.value.trim();
     if (!q) { closeSuggest(); return; }
     suggestTimer = setTimeout(function () {
-      invoke('omni:suggest', { q: q }).then(renderSuggest);
+      var at = q;
+      invoke('omni:suggest', { q: at }).then(function (items) {
+        // Discard stale responses (input changed or dropdown closed since).
+        if (addressInput.value.trim() !== at) return;
+        renderSuggest(items);
+      });
     }, 120);
   });
 
@@ -689,7 +694,8 @@
       row.el.title = (t.title || t.url) + (t.slept ? ' \u2014 sleeping (click to wake)' : '');
       var spinCls = 'ow-tab__spinner' + (t.loading ? ' is-active' : '');
       if (row.spinner.className !== spinCls) row.spinner.className = spinCls;
-      var bg = (t.favicon && /^data:|^https?:/i.test(t.favicon)) ? 'url("' + t.favicon + '")' : '';
+      var bg = (t.favicon && /^data:|^https?:/i.test(t.favicon))
+        ? 'url("' + t.favicon.replace(/["\\]/g, '') + '")' : '';
       if (bg) {
         if (row.icon.style.backgroundImage !== bg) row.icon.style.backgroundImage = bg;
       } else if (row.icon.style.backgroundImage) {
@@ -765,14 +771,16 @@
     pushBounds();
   }
 
+  var panelGen = 0;
   function renderPanel() {
+    var gen = ++panelGen;
     var body = $('sidepanel-body');
     var foot = $('sidepanel-foot');
     body.textContent = '';
     foot.textContent = '';
     if (sidePanelMode === 'favorites') {
       invoke('bookmarks:list').then(function (all) {
-        if (sidePanelMode !== 'favorites') return;
+        if (gen !== panelGen || sidePanelMode !== 'favorites') return;
         var items = all.filter(function (b) { return b.url; });
         var quick = items.filter(function (b) { return b.quick; });
         if (!items.length) {
@@ -803,7 +811,7 @@
         items.forEach(function (b) { addRow(b, false); });
         var add = el('a', null, foot);
         add.textContent = 'Add...';
-        add.addEventListener('click', openAddFavorite);
+        add.addEventListener('click', function () { openAddFavorite(); });
         var org = el('a', null, foot);
         org.textContent = 'Organize...';
         org.addEventListener('click', function () {
@@ -812,7 +820,7 @@
       });
     } else {
       invoke('history:list', { limit: 60 }).then(function (rows) {
-        if (sidePanelMode !== 'history') return;
+        if (gen !== panelGen || sidePanelMode !== 'history') return;
         if (!rows.length) {
           el('div', 'panel-empty', body).textContent = 'No history yet.';
         }
@@ -891,26 +899,30 @@
     var a = d.active | 0;
     $('find-count').textContent = n === 0 ? 'No matches' : (a + 1) + ' of ' + n;
   });
+  var statusTimer = null;
+  function setStatus(msg, timeout) {
+    $('status').textContent = msg || 'Done';
+    if (statusTimer) clearTimeout(statusTimer);
+    if (timeout) {
+      statusTimer = setTimeout(function () {
+        $('status').textContent = 'Done';
+        statusTimer = null;
+      }, timeout);
+    }
+  }
   api.on('chrome:popup-blocked', function (d) {
     var n = (d && d.count) | 0;
-    $('status').textContent = n === 1
-      ? 'Popup blocked (1)'
-      : 'Popups blocked (' + n + ')';
-    setTimeout(function () { $('status').textContent = 'Done'; }, 3000);
+    setStatus(n === 1 ? 'Popup blocked (1)' : 'Popups blocked (' + n + ')', 3000);
   });
   api.on('chrome:status', function (d) {
-    var txt = (d && d.text) || '';
-    $('status').textContent = txt || 'Done';
+    setStatus((d && d.text) || '');
   });
 
   /* --------------------------- download feedback -------------------------- */
   // Show progress while downloading and a brief notice on completion/failure.
   var dlSeen = {};
-  var dlTimer = null;
   function dlNotice(msg) {
-    $('status').textContent = msg;
-    if (dlTimer) clearTimeout(dlTimer);
-    dlTimer = setTimeout(function () { $('status').textContent = 'Done'; }, 4000);
+    setStatus(msg, 4000);
   }
   api.on('downloads', function (list) {
     if (!Array.isArray(list)) return;
@@ -948,7 +960,7 @@
     if (data.bg) {
       var ghost = $('content-ghost');
       if (ghost) {
-        ghost.style.backgroundImage = 'url("' + data.bg + '")';
+        ghost.style.backgroundImage = 'url("' + String(data.bg).replace(/["\\]/g, '') + '")';
         ghost.style.backgroundSize = '100% 100%';
         ctxGhostSnap = true;
       }
@@ -1041,9 +1053,10 @@
     var buttons = el('div', 'minidlg__buttons', dlg);
     function done(v) {
       currentMini = null;
+      var res = opts.onResult ? opts.onResult(v) : undefined;
       host.classList.remove('is-open');
       host.textContent = '';
-      if (opts.onResult) opts.onResult(v);
+      return res;
     }
     currentMini = {
       cancel: function () { done(null); }
@@ -1130,9 +1143,9 @@
       $('win-title').textContent = title;
       invoke('win:title', title);
     }
-    $('status').textContent = n.loading
+    setStatus(n.loading
       ? 'Opening page ' + (n.url || '') + '...'
-      : n.error ? (n.error.desc || n.error.url || 'Error') : 'Done';
+      : n.error ? (n.error.desc || n.error.url || 'Error') : '');
     $('zone').textContent = n.zone || '';
     $('progress').classList.toggle('is-active', n.loading);
     $('progress-bar').style.width = Math.round((n.progress || 0) * 100) + '%';
@@ -1198,7 +1211,7 @@
       a.title = b.url;
       a.addEventListener('click', function (e) {
         e.preventDefault();
-        invoke('nav:go', { url: b.url });
+        invoke('nav:go', { address: b.url });
       });
     });
   }
@@ -1244,6 +1257,10 @@
         renderTabs();
       }
       applySettings();
+      refreshBookmarks();
+      pushBounds();
+    }).catch(function () {
+      // settings:get or tabs:list failed: still bring up the chrome UI.
       refreshBookmarks();
       pushBounds();
     });
