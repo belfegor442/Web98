@@ -342,6 +342,23 @@ void runStorage() {
   s.clearHistory();
   CHECK_EQ_INT(n, s.countHistory(), 0);
 
+  // LIKE wildcards in queries must match literally, not as patterns.
+  s.addHistory("https://sale.example/item", "100% off", 5000);
+  s.addHistory("https://plain.example/page", "plain", 5001);
+  q = HistoryQuery();
+  q.q = "100%";
+  rows = s.history(q);
+  CHECK_EQ_INT(n, rows.size(), 1);
+  CHECK_EQ_STR(n, rows[0].title, "100% off");
+  q.q = "%";
+  rows = s.history(q);
+  CHECK_EQ_INT(n, rows.size(), 1);  // a lone '%' must not match every row
+  CHECK_EQ_STR(n, rows[0].title, "100% off");
+  q.q = "_";
+  rows = s.history(q);
+  CHECK_EQ_INT(n, rows.size(), 0);  // '_' is literal, no row contains it
+  s.clearHistory();
+
   BookmarkRow folder = s.addBookmark(0, "Work", "", 0);
   CHECK(n, folder.id > 0);
   s.addBookmark(folder.id, "First", "https://1.example/", 0);
@@ -363,6 +380,26 @@ void runStorage() {
   bm = s.listBookmarks();
   CHECK_EQ_INT(n, bm.size(), 1);
   CHECK_EQ_STR(n, bm[0].name, "Root item");
+
+  // Cycle guard: a folder cannot move into itself or its own subtree.
+  BookmarkRow f1 = s.addBookmark(0, "F1", "", -1);
+  BookmarkRow f2 = s.addBookmark(f1.id, "F2", "", -1);
+  BookmarkRow f3 = s.addBookmark(f2.id, "F3", "", -1);
+  s.moveBookmark(f1.id, f3.id, -1);  // into own grandchild -> rejected
+  BookmarkRow chk;
+  CHECK(n, s.getBookmark(f1.id, chk));
+  CHECK_EQ_INT(n, chk.parent, 0);
+  s.moveBookmark(f1.id, f1.id, -1);  // into itself -> rejected
+  CHECK(n, s.getBookmark(f1.id, chk));
+  CHECK_EQ_INT(n, chk.parent, 0);
+  s.moveBookmark(f1.id, 999999, -1);  // missing target -> stays put
+  CHECK(n, s.getBookmark(f1.id, chk));
+  CHECK_EQ_INT(n, chk.parent, 0);
+  s.moveBookmark(f3.id, f1.id, -1);  // valid move into F1
+  CHECK(n, s.getBookmark(f3.id, chk));
+  CHECK_EQ_INT(n, chk.parent, f1.id);
+  s.deleteBookmarkTree(f1.id);
+  s.deleteBookmarkTree(f2.id);
 
   // Quick-access (speed dial) pin/unpin + list.
   BookmarkRow a = s.addBookmark(0, "Alpha", "https://a.example/", -1);

@@ -72,7 +72,8 @@ bool Storage::open(const std::string& path, int historyLimit) {
   stHistRecent_ =
       prep("SELECT id, url, title, ts FROM history ORDER BY ts DESC, id DESC LIMIT ?");
   stHistSearch_ =
-      prep("SELECT id, url, title, ts FROM history WHERE url LIKE ? OR title LIKE ? "
+      prep("SELECT id, url, title, ts FROM history "
+           "WHERE url LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' "
            "ORDER BY ts DESC, id DESC LIMIT ?");
   stHistDay_ =
       prep("SELECT id, url, title, ts FROM history WHERE ts >= ? AND ts < ? "
@@ -197,6 +198,18 @@ void Storage::addHistory(const std::string& url, const std::string& title, int64
   }
 }
 
+// Escape LIKE wildcards so user queries match literally (paired with the
+// ESCAPE '\' clauses in stHistSearch_).
+static std::string likeEscape(const std::string& s) {
+  std::string out;
+  out.reserve(s.size() + 4);
+  for (char c : s) {
+    if (c == '\\' || c == '%' || c == '_') out += '\\';
+    out += c;
+  }
+  return out;
+}
+
 std::vector<HistoryRow> Storage::history(const HistoryQuery& q) {
   std::vector<HistoryRow> out;
   sqlite3_stmt* st = nullptr;
@@ -216,7 +229,7 @@ std::vector<HistoryRow> Storage::history(const HistoryQuery& q) {
     sqlite3_bind_int64(st, 2, q.until);
     sqlite3_bind_int(st, 3, limit);
   } else if (st == stHistSearch_) {
-    std::string like = "%" + q.q + "%";
+    std::string like = "%" + likeEscape(q.q) + "%";
     sqlite3_bind_text(st, 1, like.c_str(), static_cast<int>(like.size()), SQLITE_TRANSIENT);
     sqlite3_bind_text(st, 2, like.c_str(), static_cast<int>(like.size()), SQLITE_TRANSIENT);
     sqlite3_bind_int(st, 3, limit);
@@ -340,6 +353,17 @@ bool Storage::updateBookmark(int64_t id, const std::string& name, const std::str
 
 void Storage::moveBookmark(int64_t id, int64_t parent, int64_t position) {
   if (!stMoveBookmark_) return;
+  // Cycle guard: a folder cannot land in itself or in its own subtree, and a
+  // missing target folder keeps the bookmark where it is (no orphans).
+  if (id > 0 && parent > 0) {
+    BookmarkRow row;
+    int64_t p = parent;
+    for (int steps = 0; p > 0 && steps < 256; ++steps) {
+      if (p == id) return;
+      if (!getBookmark(p, row)) return;
+      p = row.parent;
+    }
+  }
   sqlite3_reset(stMoveBookmark_);
   sqlite3_bind_int64(stMoveBookmark_, 1, parent);
   sqlite3_bind_int64(stMoveBookmark_, 2, position);
