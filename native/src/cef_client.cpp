@@ -445,7 +445,8 @@ bool Web98Client::OnBeforeDownload(CefRefPtr<CefBrowser> browser,
   size_t dot = name.find_last_of('.');
   if (dot != std::string::npos && dot + 1 < name.size()) {
     ext = name.substr(dot + 1);
-    for (auto& c : ext) c = static_cast<char>(::tolower(c));
+    for (auto& c : ext)
+      c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
   }
   bool dangerous = false;
   for (const char* e : kDangerous)
