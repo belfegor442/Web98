@@ -1,0 +1,32 @@
+WEB98 — TÉRMINOS Y CONDICIONES
+Versión: 1.0
+Fecha: 20 de octubre de 2026
+
+Lee estos términos antes de instalar Web98. Al continuar con la instalación, confirmas que los has leído y aceptas su aplicación al uso del programa, en la medida permitida por la legislación aplicable.
+
+1. NATURALEZA DEL SOFTWARE
+Web98 es un navegador de software. Se proporciona para su instalación y uso conforme a la licencia de código abierto indicada en el proyecto. Estos términos complementan esa licencia; si existe un conflicto, prevalece la licencia aplicable al software.
+
+2. USO LEGAL
+Te comprometes a utilizar Web98 de forma lícita y a no emplearlo deliberadamente para vulnerar derechos de terceros, acceder sin autorización a sistemas o distribuir contenido ilegal.
+
+3. SITIOS WEB Y CONTENIDO DE TERCEROS
+Web98 permite acceder a sitios y servicios externos que tienen sus propias condiciones, políticas de privacidad y medidas de seguridad. El proyecto Web98 no controla esos servicios ni garantiza su disponibilidad, exactitud o contenido. Eres responsable de las decisiones que tomes al utilizarlos.
+
+4. DESCARGAS Y SEGURIDAD
+Antes de abrir archivos descargados, comprueba su procedencia y seguridad. No eludas advertencias de seguridad ni introduzcas credenciales en páginas en las que no confíes.
+
+5. PRIVACIDAD
+El tratamiento de datos puede depender de las funciones de Web98 y de los sitios que visites. Consulta la documentación y la política de privacidad disponible para la versión que instales. No se afirma aquí que el programa carezca de telemetría o que no procese datos: esas características deben describirse en la documentación técnica correspondiente.
+
+6. GARANTÍA Y RESPONSABILIDAD
+En la máxima medida permitida por la ley, el software se ofrece «TAL CUAL» y sin garantías de ningún tipo, sujeto a los derechos irrenunciables que te correspondan. Nada en estos términos excluye una responsabilidad que legalmente no pueda excluirse.
+
+7. ACTUALIZACIONES Y CAMBIOS
+Las futuras versiones pueden incorporar cambios funcionales o de estos términos. La versión aplicable debe identificarse en la documentación o en el instalador correspondiente.
+
+8. CONTACTO Y LICENCIA
+Consulta el repositorio oficial de Web98 para revisar el código, la licencia y la información de contacto disponible:
+https://github.com/belfegor442/Web98
+
+Si no aceptas estos términos, cancela la instalación.
