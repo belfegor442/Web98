@@ -7,3 +7,6 @@ Thumbs.db
 test/bench/memory-results.json
 _cef/
 native/build/
+installer/staged/
+installer/files.nsh
+installer/banner.bmp
