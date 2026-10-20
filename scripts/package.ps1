@@ -108,10 +108,6 @@ foreach ($f in $files) {
     $lastDir = $outDir
   }
   $lines.Add('  File "/oname=' + $f.Name + '" "staged\' + $rel + '"')
-  $lines.Add('  StrCpy $StatusText "' + $rel + '"')
-  $lines.Add('  ${If} $StatusH != ""')
-  $lines.Add('    System::Call ''user32::SetWindowTextW(p $StatusH, w $StatusText)''')
-  $lines.Add('  ${EndIf}')
   $lines.Add('  !insertmacro AdvFile')
 }
 $lines.Add('  SetOutPath "$INSTDIR"')

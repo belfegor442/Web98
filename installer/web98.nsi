@@ -34,7 +34,6 @@ Var DirEdit
 Var Bar
 Var BarPos
 Var StatusH
-Var StatusText
 Var AcceptYes
 Var AcceptNo
 Var OptDesktop
@@ -69,24 +68,26 @@ Var LogH
     StrCpy $Banner $1
   ${EndIf}
   System::Call 'user32::SetWindowPos(p $Banner, p 0, i 0, i 0, i 164, i $R3, i 0x0006)'
-  ${If} $BannerImg != ""
+  ${If} $Banner != "0"
+  ${AndIf} $BannerImg != "0"
+  ${AndIf} $BannerImg != ""
     System::Call 'user32::SendMessageW(p $Banner, i 0x0172, i 0, p $BannerImg)'
   ${EndIf}
   ; move nsDialogs panel (#32770 child of main) right of banner
   System::Call 'user32::FindWindowExW(p $HWNDPARENT, p 0, w "#32770", p 0) p.r9'
-  IntOp $R4 $2 - 182
-  IntOp $R5 $3 - 43
+  IntOp $R4 $R2 - 182
+  IntOp $R5 $R3 - 43
   System::Call 'user32::SetWindowPos(p $9, p 0, i 175, i 36, i $R4, i $R5, i 0x0004)'
   ; buttons top-right: y=8, [Cancel][Back][Next]
-  IntOp $1 $2 - 89
+  IntOp $1 $R2 - 89
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r9'
   System::Call 'user32::SetWindowPos(p $9, p 0, i $1, i 8, i 0, i 0, i 0x0005)'
   System::Call 'user32::SendMessageW(p $9, i 0x0030, p $FReg, i 0)'
-  IntOp $1 $2 - 170
+  IntOp $1 $R2 - 170
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 3) p.r9'
   System::Call 'user32::SetWindowPos(p $9, p 0, i $1, i 8, i 0, i 0, i 0x0005)'
   System::Call 'user32::SendMessageW(p $9, i 0x0030, p $FReg, i 0)'
-  IntOp $1 $2 - 251
+  IntOp $1 $R2 - 251
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 2) p.r9'
   System::Call 'user32::SetWindowPos(p $9, p 0, i $1, i 8, i 0, i 0, i 0x0005)'
   System::Call 'user32::SendMessageW(p $9, i 0x0030, p $FReg, i 0)'
@@ -118,7 +119,9 @@ Var LogH
 
 Function .onInit
   InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
   File /oname=banner.bmp "banner.bmp"
+  File /oname=terms.txt "terms.txt"
   System::Call 'user32::LoadImageW(p 0, w "$PLUGINSDIR\banner.bmp", i 0, i 0, i 0, i 0x0010) p.r1'
   StrCpy $BannerImg $1
   ; silent mode: custom pages never run, so do the install here
@@ -158,19 +161,36 @@ Function fLicense
     Abort
   ${EndIf}
   !insertmacro LayoutInit
-  ${NSD_CreateLabel} 0 0 100% 12u "License Agreement"
+  ${NSD_CreateLabel} 0 0 100% 12u "Terms and Conditions of Use"
   Pop $0
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FBold, i 0)'
-  ${NSD_CreateLabel} 0 14u 100% 70u "Web98 License$\r$\n$\r$\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:$\r$\n$\r$\nTHE SOFTWARE IS PROVIDED ""AS IS"", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED."
+  ${NSD_CreateText} 0 14u 100% 76u ""
   Pop $0
+  ${NSD_AddStyle} $0 0x00000844
+  ${NSD_AddStyle} $0 0x00200000
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FReg, i 0)'
-  ${NSD_CreateRadioButton} 0 86u 100% 10u "I &accept the terms of the license"
+  ; load full T&C (UTF-16LE) straight into the edit — avoids NSIS 8k string limit
+  System::Call 'kernel32::CreateFileW(w "$PLUGINSDIR\terms.txt", i 0x80000000, i 0, p 0, i 3, i 0, p 0) p.r8'
+  System::Call 'kernel32::GetFileSize(p $8, p 0) i.r2'
+  IntOp $R3 $2 + 2
+  System::Call 'kernel32::VirtualAlloc(p 0, i $R3, i 0x3000, i 4) p.r4'
+  System::Call 'kernel32::ReadFile(p $8, p $4, i $2, *i .r5, p 0)'
+  System::Call 'kernel32::CloseHandle(p $8)'
+  System::Call '*$4(w.r6)'
+  ${If} $6 = 0xFEFF
+    IntOp $R4 $4 + 2
+  ${Else}
+    StrCpy $R4 $4
+  ${EndIf}
+  System::Call 'user32::SendMessageW(p $0, i 0x000C, i 0, p $R4)'
+  ${NSD_CreateRadioButton} 0 92u 100% 10u "I &accept the terms of the license"
   Pop $AcceptYes
-  ${NSD_CreateRadioButton} 0 96u 100% 10u "I &do not accept the terms of the license"
+  ${NSD_CreateRadioButton} 0 102u 100% 10u "I &do not accept the terms of the license"
   Pop $AcceptNo
   System::Call 'user32::SendMessageW(p $AcceptYes, i 0x0030, p $FReg, i 0)'
   System::Call 'user32::SendMessageW(p $AcceptNo, i 0x0030, p $FReg, i 0)'
   ${NSD_OnClick} $AcceptYes fOnAccept
+  ${NSD_OnClick} $AcceptNo fOnDecline
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
   System::Call 'user32::EnableWindow(p $1, i 0)'
   nsDialogs::Show
@@ -182,11 +202,17 @@ Function fOnAccept
   System::Call 'user32::EnableWindow(p $1, i 1)'
 FunctionEnd
 
+Function fOnDecline
+
+  System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
+  System::Call 'user32::EnableWindow(p $1, i 0)'
+FunctionEnd
+
 Function fLicenseLeave
 
-  ${NSD_GetState} $AcceptNo $R0
-  ${If} $R0 == ${BST_CHECKED}
-    MessageBox MB_ICONEXCLAMATION|MB_OK "You must accept the license agreement to continue."
+  ${NSD_GetState} $AcceptYes $R0
+  ${If} $R0 != ${BST_CHECKED}
+    MessageBox MB_ICONEXCLAMATION|MB_OK "You must accept the terms and conditions to continue."
     Abort
   ${EndIf}
 FunctionEnd
@@ -292,6 +318,10 @@ Function DoInstall
   !insertmacro LogLine "start"
   System::Call 'user32::ShowWindow(p $Bar, i 5)'
   System::Call 'user32::ShowWindow(p $StatusH, i 5)'
+  ${If} $StatusH != "0"
+  ${AndIf} $StatusH != ""
+    System::Call 'user32::SetWindowTextW(p $StatusH, w "Installing files...")'
+  ${EndIf}
   System::Call 'user32::SendMessageW(p $Bar, i 0x406, i 0, i ${TOTALFILES})'
   ; disable Next + Back during extract
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
