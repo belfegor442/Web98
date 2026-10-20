@@ -1,4 +1,4 @@
-; Web98 Installer — Windows 98 look & font (NSIS 3.12)
+; Web98 Installer â€” Windows 98 look & font (NSIS 3.12)
 ; Custom nsDialogs wizard: MS Sans Serif via WM_SETFONT, no manifest
 ; (classic 3D controls on modern Windows), banner left, buttons top-right.
 ; Build via scripts\package.ps1 (stages files, banner.bmp, files.nsh).
@@ -34,11 +34,14 @@ Var DirEdit
 Var Bar
 Var BarPos
 Var StatusH
+Var StatusText
 Var AcceptYes
 Var AcceptNo
 Var OptDesktop
 Var OptStartMenu
 Var LaunchBox
+Var DesktopOn
+Var LogH
 
 ; ---------------------------------------------------------- layout macro
 ; Called after nsDialogs::Create in every page. Moves content panel right
@@ -107,11 +110,25 @@ Var LaunchBox
   ${Loop}
 !macroend
 
+; NOTE: NSIS FileOpen mode 'a' writes at position 0 (observed overwrite, not
+; append) â€” open ONE handle at install start and write sequentially instead.
+!macro LogLine txt
+  FileWrite $LogH "${txt}$\r$\n"
+!macroend
+
 Function .onInit
   InitPluginsDir
   File /oname=banner.bmp "banner.bmp"
   System::Call 'user32::LoadImageW(p 0, w "$PLUGINSDIR\banner.bmp", i 0, i 0, i 0, i 0x0010) p.r1'
   StrCpy $BannerImg $1
+  ; silent mode: custom pages never run, so do the install here
+  IfSilent doInstall
+  Goto initDone
+doInstall:
+  StrCpy $BarPos 0
+  StrCpy $DesktopOn 1
+  Call DoInstall
+initDone:
 FunctionEnd
 
 ; ============================================================ WELCOME
@@ -160,11 +177,13 @@ Function fLicense
 FunctionEnd
 
 Function fOnAccept
+
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
   System::Call 'user32::EnableWindow(p $1, i 1)'
 FunctionEnd
 
 Function fLicenseLeave
+
   ${NSD_GetState} $AcceptNo $R0
   ${If} $R0 == ${BST_CHECKED}
     MessageBox MB_ICONEXCLAMATION|MB_OK "You must accept the license agreement to continue."
@@ -198,6 +217,7 @@ Function fDir
 FunctionEnd
 
 Function fOnBrowse
+
   nsDialogs::SelectFolderDialog "Select the folder where Setup will install Web98" $INSTDIR
   Pop $R0
   ${If} $R0 != "error"
@@ -208,6 +228,7 @@ Function fOnBrowse
 FunctionEnd
 
 Function fDirLeave
+
   ${NSD_GetText} $DirEdit $R0
   ${If} $R0 == ""
     MessageBox MB_ICONEXCLAMATION|MB_OK "Please select an install location."
@@ -252,7 +273,23 @@ Function fOptions
 FunctionEnd
 
 Function fOptionsLeave
+
   StrCpy $BarPos 0
+  ${NSD_GetState} $OptDesktop $R0
+  ${If} $R0 == ${BST_CHECKED}
+    StrCpy $DesktopOn 1
+  ${Else}
+    StrCpy $DesktopOn 0
+  ${EndIf}
+  Call DoInstall
+FunctionEnd
+
+; shared install logic: progress UI (harmless when silent/hidden), extraction,
+; registry, uninstaller, shortcuts
+Function DoInstall
+  SetOutPath "$INSTDIR"
+  FileOpen $LogH "$INSTDIR\install.log" w
+  !insertmacro LogLine "start"
   System::Call 'user32::ShowWindow(p $Bar, i 5)'
   System::Call 'user32::ShowWindow(p $StatusH, i 5)'
   System::Call 'user32::SendMessageW(p $Bar, i 0x406, i 0, i ${TOTALFILES})'
@@ -263,16 +300,18 @@ Function fOptionsLeave
   System::Call 'user32::EnableWindow(p $1, i 0)'
   ; extraction (File instructions from files.nsh)
   !insertmacro InstallFiles
+  !insertmacro LogLine "files-done"
   ; registry + uninstaller + shortcuts
   WriteRegStr HKCU "Software\Web98" "InstallDir" "$INSTDIR"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\Web98"
   CreateShortCut "$SMPROGRAMS\Web98\Web98.lnk" "$INSTDIR\web98.exe" "" "$INSTDIR\web98.exe" 0
   CreateShortCut "$SMPROGRAMS\Web98\Uninstall Web98.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
-  ${NSD_GetState} $OptDesktop $R0
-  ${If} $R0 == ${BST_CHECKED}
+  ${If} $DesktopOn == 1
     CreateShortCut "$DESKTOP\Web98.lnk" "$INSTDIR\web98.exe" "" "$INSTDIR\web98.exe" 0
   ${EndIf}
+  !insertmacro LogLine "install-done"
+  FileClose $LogH
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
   System::Call 'user32::EnableWindow(p $1, i 1)'
 FunctionEnd
@@ -398,3 +437,11 @@ Function un.fDone
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FReg, i 0)'
   nsDialogs::Show
 FunctionEnd
+
+; NSIS requires at least one section; never executed (no instfiles page â€”
+; all install/uninstall work happens in page functions).
+Section "Web98"
+SectionEnd
+
+Section "Uninstall"
+SectionEnd

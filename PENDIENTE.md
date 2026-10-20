@@ -1,14 +1,12 @@
 # Pendientes Web98
 
-## Estado actual (2026-10-20, HEAD local tras commit del instalador)
-- Instalador NSIS Win98 escrito (`installer/web98.nsi`) + empaquetador (`scripts/package.ps1`).
-- Verificado con probes: sintaxis System::Call outputs = `.r0..9` (sin `$`), structs tipo `i` (4 bytes), mecánica de layout (panel+banner+botones top-right) OK.
-- Último run de `package.ps1 -Test` FALLÓ por falta de `!include nsDialogs.nsh` — YA CORREGIDO en web98.nsi + fix icono en banner (ToBitmap+DrawImage), pero NO se ha re-ejecutado.
+## Estado actual (2026-10-20)
+- Instalador NSIS Win98 (`installer/web98.nsi`) + empaquetador (`scripts/package.ps1`) COMPLETOS.
+- **`package.ps1 -Test` PASA**: instalación silenciosa 300 ficheros, verificación, desinstalación limpia.
+- Dos bugs raíz resueltos hoy (ver Notas técnicas): `FileOpen` modo `'a'` escribe en pos 0, y `SetWindowTextW(p $StatusH, ...)` con `$StatusH` vacío corrompe `$INSTDIR`.
 
 ## Tarea 1 — Compilar y probar el instalador (ALTA)
-- [ ] Ejecutar: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package.ps1 -Test`
-- [ ] Si makensis da errores, arreglar web98.nsi (compilación de 300 File instructions + LZMA ~250MB tarda varios minutos).
-- [ ] Test silencioso incluido: instala en `%TEMP%\web98-install-test`, verifica archivos requeridos, desinstala silencioso, verifica borrado.
+- [x] `package.ps1 -Test` pasa: install 300 ficheros → verify 7 required → uninstall → dir removed.
 
 ## Tarea 2 — Test UI visual instalador (ALTA)
 - [ ] Ejecutar `dist\Web98 Setup 0.1.0 x64.exe` (GUI) y verificar aspecto Win98:
@@ -35,9 +33,13 @@
 - [ ] Considerar DPI awareness si hay queks en pantallas >96dpi (instalador es 96dpi-fijo por diseño NSIS clásico).
 
 ## Notas técnicas clave (para quien continúe)
+- **BUG 1 (resuelto)**: `FileOpen $h file 'a'` escribe en posición 0 (sobrescribe) — abrir UN handle con `'w'` al inicio y usar `FileWrite` secuencial.
+- **BUG 2 (resuelto)**: `System::Call 'user32::SetWindowTextW(p $StatusH, w $StatusText)'` con `$StatusH` = cadena vacía (modo `/S`, página nunca creada) corrompe `$INSTDIR` a "0" (nunca se ejecutó ningún StrCpy sobre $INSTDIR — corrupción por el propio System::Call). Fix: envolver en `${If} $StatusH != ""`. Nunca pasar vars vacías como punteros `p` a System::Call.
 - NSIS 3.12 en `C:\Program Files (x86)\NSIS\makensis.exe` (NO en PATH).
 - System::Call: outputs SOLO `.r0..9` (`.r $var` sale vacío — bug sintaxis); structs usar tipo `i` (4B), `l` lee 8B y mezcla campos; pasar structs como puntero plano `p $addr`, leer con `*$addr(i.r1, ...)`.
 - Registros NSIS: solo `$0-$9` y `$R0-$R9` (no existen `$S*`).
+- Modo `/S` (silencioso): páginas custom NO corren — toda la lógica de instalación vive en `Function DoInstall` llamada desde `.onInit` vía `IfSilent`.
+- NSIS exige ≥1 Section aunque no se ejecute (warning 8000 aceptable en ambos instalador y desinstalador).
 - `installer/staged/`, `installer/files.nsh`, `installer/banner.bmp` se GENERAN con package.ps1 (están en .gitignore; no commitear).
 - Para compilar directo con makensis primero hay que correr package.ps1 (genera files.nsh + banner.bmp).
 - Repo: `https://github.com/belfegor442/Web98`, rama `master`. Tras cada cambio: build nativo + `web98_unit.exe` (195 tests) + sintaxis JS + smoke.

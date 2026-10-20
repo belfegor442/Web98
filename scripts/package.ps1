@@ -41,11 +41,46 @@ $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
 )
 $g.FillRectangle($brush, 0, 0, $bw, $bh)
 try {
-  $ico = New-Object System.Drawing.Icon((Join-Path $root 'build\icon.ico'))
-  $ib = $ico.ToBitmap()
-  $g.DrawImage($ib, (New-Object System.Drawing.Rectangle(58, 30, 48, 48)))
-  $ib.Dispose()
-  $ico.Dispose()
+  $drawn = $false
+  $icoPath = Join-Path $root 'build\icon.ico'
+  foreach ($sz in @(32, 16, 48)) {
+    try {
+      $ico = New-Object System.Drawing.Icon($icoPath, $sz, $sz)
+      $ib = $ico.ToBitmap()
+      $off = [int]((48 - $sz) / 2)
+      $g.DrawImage($ib, (New-Object System.Drawing.Rectangle(58 + $off, 30 + $off, $sz, $sz)))
+      $ib.Dispose()
+      $ico.Dispose()
+      $drawn = $true
+      break
+    } catch { }
+  }
+  if (-not $drawn) {
+    # .NET ToBitmap fails on PNG-encoded entries — decode PNG payload manually
+    $b = [IO.File]::ReadAllBytes($icoPath)
+    $n = [BitConverter]::ToUInt16($b, 4)
+    $cand = -1; $candArea = 0
+    for ($i = 0; $i -lt $n; $i++) {
+      $o = 6 + $i * 16
+      $w = [int]$b[$o]; if ($w -eq 0) { $w = 256 }
+      $h = [int]$b[$o + 1]; if ($h -eq 0) { $h = 256 }
+      $imgOff = [BitConverter]::ToUInt32($b, $o + 12)
+      if (($imgOff + 8) -ge $b.Length) { continue }
+      $isPng = ($b[$imgOff] -eq 0x89 -and $b[$imgOff + 1] -eq 0x50 -and $b[$imgOff + 2] -eq 0x4E -and $b[$imgOff + 3] -eq 0x47)
+      if ($isPng -and $w -le 256 -and ($w * $h) -gt $candArea) { $candArea = $w * $h; $cand = $o }
+    }
+    if ($cand -ge 0) {
+      $imgLen = [BitConverter]::ToUInt32($b, $cand + 8)
+      $imgOff = [BitConverter]::ToUInt32($b, $cand + 12)
+      [byte[]]$png = $b[$imgOff..($imgOff + $imgLen - 1)]
+      $ms = New-Object System.IO.MemoryStream(,$png)
+      $ib = [System.Drawing.Image]::FromStream($ms)
+      $g.DrawImage($ib, (New-Object System.Drawing.Rectangle(58, 30, 48, 48)))
+      $ib.Dispose(); $ms.Dispose()
+      $drawn = $true
+    }
+  }
+  if (-not $drawn) { Write-Warning 'icon not drawn in banner (skipping)' }
 } catch {
   Write-Warning "icon draw failed: $_"
 }
@@ -65,19 +100,18 @@ $lines.Add('!define TOTALFILES "' + $files.Count + '"')
 $lines.Add('!macro InstallFiles')
 $lastDir = $null
 foreach ($f in $files) {
-  $rel = $f.FullName.Substring($staged.Length + 1)
-  $dirRel = ''
-  $di = $f.DirectoryName
-  if ($di -ne $staged) { $dirRel = $di.Substring($staged.Length + 1) }
+  $rel = $f.FullName.Substring($src.Length + 1)
+  $dirRel = Split-Path $rel -Parent
   $outDir = if ($dirRel) { '$INSTDIR\' + $dirRel } else { '$INSTDIR' }
   if ($outDir -ne $lastDir) {
     $lines.Add('  SetOutPath "' + $outDir + '"')
     $lastDir = $outDir
   }
-  $display = $rel -replace '/', '\'
-  $lines.Add('  File "/oname=' + $f.Name + '" "staged\' + $display + '"')
-  $lines.Add('  StrCpy $StatusText "' + $display + '"')
-  $lines.Add('  System::Call ''user32::SetWindowTextW(p $StatusH, w $StatusText)''')
+  $lines.Add('  File "/oname=' + $f.Name + '" "staged\' + $rel + '"')
+  $lines.Add('  StrCpy $StatusText "' + $rel + '"')
+  $lines.Add('  ${If} $StatusH != ""')
+  $lines.Add('    System::Call ''user32::SetWindowTextW(p $StatusH, w $StatusText)''')
+  $lines.Add('  ${EndIf}')
   $lines.Add('  !insertmacro AdvFile')
 }
 $lines.Add('  SetOutPath "$INSTDIR"')
