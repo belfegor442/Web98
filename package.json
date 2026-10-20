@@ -67,6 +67,7 @@
     },
     "nsis": {
       "artifactName": "${productName} Setup ${version} ${arch}.${ext}",
+      "license": "LICENSE.txt",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
