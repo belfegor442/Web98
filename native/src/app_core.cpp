@@ -7,13 +7,16 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 
 #include "base.h"
+#include "bookmarks_html.h"
 #include "cef_engine.h"
 #include "cef_util.h"
 #include "dialogs.h"
 #include "dlpath.h"
 #include "menus.h"
+#include "passwords.h"
 #include "safeurl.h"
 #include "settings.h"
 #include "urlbar.h"
@@ -49,8 +52,9 @@ bool contextCommandOk(const std::string& s) {
   return true;
 }
 
-const char* kDialogPages[] = {"about",  "downloads", "favorites",
-                              "history", "pageinfo", "settings", "source"};
+const char* kDialogPages[] = {"about",     "downloads", "favorites",
+                              "history",   "pageinfo",  "passwords",
+                              "settings",  "source"};
 
 Json bookmarkToJson(const BookmarkRow& b) {
   Json o = Json::makeObject();
@@ -860,20 +864,16 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
       HWND owner = ctx.window ? ctx.window->hwnd()
                               : (ctx.dialog ? ctx.dialog->hwnd() : nullptr);
       std::string path = dialogs::saveFileDialog(owner, "Export Favorites",
-                                                 "web98-favorites.html.json",
-                                                 {"json"});
+                                                 "favorites.htm",
+                                                 {"htm", "html"});
       if (path.empty()) {
         Json o = Json::makeObject();
         o.obj.emplace_back("ok", Json::makeBool(false));
         reply(std::move(o));
         return;
       }
-      Json root = Json::makeObject();
-      Json arr = Json::makeArray();
-      for (const auto& b : storage_.listBookmarks())
-        arr.arr.push_back(bookmarkToJson(b));
-      root.obj.emplace_back("bookmarks", std::move(arr));
-      bool ok = writeFileAtomic(path, root.dump());
+      std::string html = exportNetscapeHtml(storage_.listBookmarks());
+      bool ok = writeFileAtomic(path, html);
       Json o = Json::makeObject();
       o.obj.emplace_back("ok", Json::makeBool(ok));
       if (ok) o.obj.emplace_back("path", Json::makeString(path));
@@ -887,7 +887,7 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
       HWND owner = ctx.window ? ctx.window->hwnd()
                               : (ctx.dialog ? ctx.dialog->hwnd() : nullptr);
       std::string path = dialogs::openFileDialog(owner, "Import Favorites",
-                                                 {"json"});
+                                                 {"htm", "html", "json"});
       Json o = Json::makeObject();
       if (path.empty()) {
         o.obj.emplace_back("ok", Json::makeBool(false));
@@ -895,29 +895,135 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
         return;
       }
       std::string text;
+      if (!readFile(path, text)) {
+        o.obj.emplace_back("ok", Json::makeBool(false));
+        o.obj.emplace_back("error", Json::makeString("read failed"));
+        reply(std::move(o));
+        return;
+      }
+      // Netscape HTML (classic IE favorites export).
+      std::vector<BmNode> nodes;
+      if (parseNetscapeHtml(text, nodes)) {
+        int count = 0;
+        std::function<void(const std::vector<BmNode>&, int64_t)> addNodes =
+            [&](const std::vector<BmNode>& list, int64_t parent) {
+              for (const auto& n : list) {
+                if (!isBookmarkUrl(n.url) && !n.url.empty()) continue;
+                BookmarkRow r =
+                    storage_.addBookmark(parent, n.name, n.url, -1);
+                ++count;
+                if (n.url.empty()) addNodes(n.children, r.id);
+              }
+            };
+        addNodes(nodes, 0);
+        broadcast("bookmarks:changed", Json::makeNull());
+        o.obj.emplace_back("ok", Json::makeBool(true));
+        o.obj.emplace_back("count", Json::makeNumber(static_cast<double>(count)));
+        reply(std::move(o));
+        return;
+      }
+      // Legacy JSON format.
       Json root;
-      if (!readFile(path, text) || !Json::parse(text, root)) {
-        o.obj.emplace_back("ok", Json::makeBool(false));
-        o.obj.emplace_back("error", Json::makeString("bad format"));
+      if (Json::parse(text, root)) {
+        const Json* list = root.find("bookmarks");
+        std::vector<BookmarkIn> rows =
+            sanitizeBookmarkList(list ? *list : Json::makeNull());
+        bool hadList = list && list->isArray();
+        if (rows.empty() && !(hadList && list->arr.empty())) {
+          o.obj.emplace_back("ok", Json::makeBool(false));
+          o.obj.emplace_back("error", Json::makeString("bad format"));
+          reply(std::move(o));
+          return;
+        }
+        for (const auto& b : rows)
+          storage_.addBookmark(b.parent, b.name, b.url, -1);
+        broadcast("bookmarks:changed", Json::makeNull());
+        o.obj.emplace_back("ok", Json::makeBool(true));
+        o.obj.emplace_back("count", Json::makeNumber(static_cast<double>(rows.size())));
         reply(std::move(o));
         return;
       }
-      const Json* list = root.find("bookmarks");
-      std::vector<BookmarkIn> rows =
-          sanitizeBookmarkList(list ? *list : Json::makeNull());
-      bool hadList = list && list->isArray();
-      if (rows.empty() && !(hadList && list->arr.empty())) {
-        o.obj.emplace_back("ok", Json::makeBool(false));
-        o.obj.emplace_back("error", Json::makeString("bad format"));
-        reply(std::move(o));
-        return;
-      }
-      for (const auto& b : rows)
-        storage_.addBookmark(b.parent, b.name, b.url, -1);
-      broadcast("bookmarks:changed", Json::makeNull());
-      o.obj.emplace_back("ok", Json::makeBool(true));
-      o.obj.emplace_back("count", Json::makeNumber(static_cast<double>(rows.size())));
+      o.obj.emplace_back("ok", Json::makeBool(false));
+      o.obj.emplace_back("error", Json::makeString("bad format"));
       reply(std::move(o));
+      return;
+    }
+  }
+
+  // ---- passwords ----
+  if (channel.rfind("passwords:", 0) == 0) {
+    if (channel == "passwords:list") {
+      std::string origin;
+      if (arg.isObject()) {
+        const Json* v = arg.find("origin");
+        if (v && v->isString()) origin = v->str.substr(0, 512);
+      }
+      Json arr = Json::makeArray();
+      for (const auto& r : storage_.listLogins(origin)) {
+        Json o = Json::makeObject();
+        o.obj.emplace_back("id", Json::makeNumber(static_cast<double>(r.id)));
+        o.obj.emplace_back("origin", Json::makeString(r.origin));
+        o.obj.emplace_back("username", Json::makeString(r.username));
+        o.obj.emplace_back("created", Json::makeNumber(static_cast<double>(r.created)));
+        o.obj.emplace_back("updated", Json::makeNumber(static_cast<double>(r.updated)));
+        arr.arr.push_back(std::move(o));
+      }
+      reply(std::move(arr));
+      return;
+    }
+    if (channel == "passwords:get") {
+      int64_t id = 0;
+      const Json* idv = arg.isObject() ? arg.find("id") : nullptr;
+      std::vector<uint8_t> blob;
+      if (idv && sanitizeId(*idv, id) && storage_.getLoginSecret(id, blob)) {
+        std::vector<uint8_t> plain = dpapiUnprotect(blob);
+        Json o = Json::makeObject();
+        o.obj.emplace_back("ok", Json::makeBool(!plain.empty()));
+        if (!plain.empty()) {
+          o.obj.emplace_back("password",
+                             Json::makeString(std::string(plain.begin(), plain.end())));
+        }
+        reply(std::move(o));
+        return;
+      }
+      Json o = Json::makeObject();
+      o.obj.emplace_back("ok", Json::makeBool(false));
+      reply(std::move(o));
+      return;
+    }
+    if (channel == "passwords:save") {
+      std::string origin, user, pass;
+      if (arg.isObject()) {
+        const Json* v;
+        if ((v = arg.find("origin")) && v->isString()) origin = v->str.substr(0, 512);
+        if ((v = arg.find("username")) && v->isString()) user = v->str.substr(0, 256);
+        if ((v = arg.find("password")) && v->isString()) pass = v->str.substr(0, 1024);
+      }
+      Json o = Json::makeObject();
+      std::string norm = originFromUrl(origin);
+      if (norm.empty()) norm = origin;
+      if (norm.empty() || pass.empty()) {
+        o.obj.emplace_back("ok", Json::makeBool(false));
+        reply(std::move(o));
+        return;
+      }
+      std::vector<uint8_t> plain(pass.begin(), pass.end());
+      std::vector<uint8_t> blob = dpapiProtect(plain);
+      bool ok = !blob.empty() && storage_.upsertLogin(norm, user, blob);
+      o.obj.emplace_back("ok", Json::makeBool(ok));
+      reply(std::move(o));
+      return;
+    }
+    if (channel == "passwords:delete") {
+      int64_t id = 0;
+      const Json* idv = arg.isObject() ? arg.find("id") : nullptr;
+      if (idv && sanitizeId(*idv, id)) storage_.deleteLogin(id);
+      if (isInvoke) replyNull();
+      return;
+    }
+    if (channel == "passwords:clear") {
+      storage_.clearLogins();
+      if (isInvoke) replyNull();
       return;
     }
   }

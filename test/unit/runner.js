@@ -271,6 +271,33 @@ function runStore() {
     try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* noop */ }
   });
 
+  test('store: logins upsert/list/secret/delete/clear', function () {
+    store.upsertLogin('https://a.example', 'alice', Buffer.from('pw1'));
+    store.upsertLogin('https://a.example', 'bob', Buffer.from('pw2'));
+    // Same (origin, username) updates the secret instead of duplicating.
+    store.upsertLogin('https://a.example', 'alice', Buffer.from('pw1b'));
+
+    var all = store.listLogins();
+    eq(all.length, 2, 'two logins stored');
+    eq(all[0].username, 'alice');
+    eq(all[0].origin, 'https://a.example');
+
+    var filtered = store.listLogins('https://a.example');
+    eq(filtered.length, 2, 'origin filter matches');
+    eq(store.listLogins('https://other.example').length, 0, 'origin filter excludes');
+
+    var secret = store.getLoginSecret(filtered[0].id);
+    ok(Buffer.isBuffer(secret), 'secret is a blob');
+    eq(secret.toString('utf8'), 'pw1b', 'upsert replaced the secret');
+
+    store.deleteLogin(filtered[0].id);
+    eq(store.listLogins().length, 1, 'deleted one');
+    eq(store.getLoginSecret(filtered[0].id), null, 'secret gone with row');
+
+    store.clearLogins();
+    eq(store.listLogins().length, 0, 'clear empties table');
+  });
+
   test('store: persistence across reopen', function () {
     store.close();
     var store2 = openStore(dbPath);
@@ -441,12 +468,14 @@ function runMenus() {
     eq(menus.runCommand('view:refresh', null, f.ctx), true);
     eq(menus.runCommand('view:home', null, f.ctx), true);
     eq(menus.runCommand('tools:settings', null, f.ctx), true);
+    eq(menus.runCommand('tools:passwords', null, f.ctx), true);
     eq(menus.runCommand('file:exit', null, f.ctx), true);
     ok(f.calls.indexOf('create:null') !== -1 || f.calls.indexOf('create:undefined') !== -1 ||
       f.calls.some(function (c) { return c.indexOf('create:') === 0; }), 'tab created');
     ok(f.calls.indexOf('reload') !== -1, 'reload called');
     ok(f.calls.indexOf('load:file:///home.html') !== -1, 'home loaded');
     ok(f.calls.indexOf('dialog:settings') !== -1, 'settings dialog');
+    ok(f.calls.indexOf('dialog:passwords') !== -1, 'passwords dialog');
     ok(f.calls.indexOf('quit') !== -1, 'quit called');
     eq(menus.runCommand('no:such', null, f.ctx), false, 'unknown command returns false');
   });
@@ -637,6 +666,32 @@ function runValidate() {
     eq(r3.patch.zoom, 1, 'non-numeric zoom falls back');
   });
 
+  test('validate: sanitizeSettingsPatch extended booleans and numeric keys', function () {
+    var r = validate.sanitizeSettingsPatch({
+      pageFonts: false,
+      sleepTabs: true,
+      sleepTabsDelay: 99999,
+      throbber: false,
+      hwAccel: 'yes',
+      autofill: { firstName: 'Ada', evil: 'x', phone: 42 },
+      textEncoding: 'Shift_JIS'
+    });
+    eq(r.patch.pageFonts, false, 'pageFonts kept');
+    eq(r.patch.sleepTabs, true, 'sleepTabs kept');
+    eq(r.patch.sleepTabsDelay, 43200, 'sleepTabsDelay clamped to max');
+    eq(r.patch.throbber, false, 'throbber kept');
+    eq(r.patch.hwAccel, undefined, 'non-bool hwAccel rejected');
+    ok(r.rejected.indexOf('hwAccel') !== -1, 'hwAccel in rejected');
+    eq(r.patch.autofill.firstName, 'Ada', 'autofill firstName kept');
+    eq(r.patch.autofill.evil, undefined, 'autofill unknown field dropped');
+    eq(r.patch.autofill.phone, undefined, 'autofill non-string dropped');
+    eq(r.patch.textEncoding, 'Shift_JIS', 'textEncoding kept');
+    var r2 = validate.sanitizeSettingsPatch({ textEncoding: 'utf-7' });
+    eq(r2.patch.textEncoding, undefined, 'unknown encoding rejected');
+    var r3 = validate.sanitizeSettingsPatch({ sleepTabsDelay: 'x' });
+    eq(r3.patch.sleepTabsDelay, 300, 'non-numeric sleepTabsDelay defaults');
+  });
+
   test('validate: grant origins and permission names', function () {
     ok(validate.isGrantOrigin('https://x.example'), 'https origin');
     eq(validate.isGrantOrigin('null'), false, 'opaque null origin cannot receive persistent grants');
@@ -735,6 +790,60 @@ function runDownloads() {
   });
 }
 
+/* ------------------------------ bookmarks html ---------------------------- */
+var bookmarksHtml = require('../../src/shared/bookmarks_html');
+
+function runBookmarksHtml() {
+  test('bookmarks_html: export escapes names and urls', function () {
+    var html = bookmarksHtml.exportNetscapeHtml([
+      { id: 1, parent: 0, name: 'Folder & <Co>', url: '' },
+      { id: 2, parent: 1, name: 'A "quoted" link', url: 'https://x.example/?a=1&b=2' }
+    ]);
+    ok(html.indexOf('<!DOCTYPE NETSCAPE-ABookmark-file-1>') === 0, 'netscape header');
+    ok(html.indexOf('<DT><H3>Folder &amp; &lt;Co&gt;</H3>') !== -1, 'folder name escaped');
+    ok(html.indexOf('HREF="https://x.example/?a=1&amp;b=2"') !== -1, 'url escaped');
+    ok(html.indexOf('<DT><A HREF=') !== -1, 'link row emitted');
+  });
+
+  test('bookmarks_html: parse round-trip preserves hierarchy', function () {
+    var rows = [
+      { id: 1, parent: 0, name: 'Work', url: '' },
+      { id: 2, parent: 1, name: 'First', url: 'https://1.example/' },
+      { id: 3, parent: 1, name: 'Second', url: 'https://2.example/' },
+      { id: 4, parent: 0, name: 'Root', url: 'https://root.example/' }
+    ];
+    var parsed = bookmarksHtml.parseNetscapeHtml(bookmarksHtml.exportNetscapeHtml(rows));
+    ok(parsed.ok, 'parsed');
+    eq(parsed.nodes.length, 2, 'two root nodes');
+    eq(parsed.nodes[0].name, 'Work');
+    eq(parsed.nodes[0].url, '', 'folder has empty url');
+    eq(parsed.nodes[0].children.length, 2, 'children under folder');
+    eq(parsed.nodes[0].children[0].url, 'https://1.example/');
+    eq(parsed.nodes[1].name, 'Root');
+  });
+
+  test('bookmarks_html: entities and comments decoded on import', function () {
+    var parsed = bookmarksHtml.parseNetscapeHtml(
+      '<!-- generated -->\n<DL><p>\n' +
+      '<DT><H3>Fol &amp; der</H3>\n<DL><p>\n' +
+      '<DT><A HREF="https://e.example/?x=1&amp;y=2">Link &lt;here&gt;</A>\n' +
+      '</DL><p>\n</DL><p>\n'
+    );
+    ok(parsed.ok, 'parsed');
+    eq(parsed.nodes[0].name, 'Fol & der', 'folder entity decoded');
+    eq(parsed.nodes[0].children[0].name, 'Link <here>', 'link text decoded');
+    eq(parsed.nodes[0].children[0].url, 'https://e.example/?x=1&y=2', 'url entity decoded');
+  });
+
+  test('bookmarks_html: garbage input yields ok=false', function () {
+    eq(bookmarksHtml.parseNetscapeHtml('<html><body>no bookmarks here</body></html>').ok, false, 'no DL/A nodes');
+    eq(bookmarksHtml.parseNetscapeHtml('').ok, false, 'empty input');
+    // javascript: hrefs are kept by the parser; filtering is the caller's job.
+    var parsed = bookmarksHtml.parseNetscapeHtml('<DT><A HREF="javascript:alert(1)">x</A>');
+    eq(parsed.ok, true, 'parser itself is format-only');
+  });
+}
+
 /* --------------------------------- main ----------------------------------- */
 function runAll() {
   console.log('Web98 unit tests');
@@ -744,6 +853,7 @@ function runAll() {
   runMenus();
   runSafeUrl();
   runValidate();
+  runBookmarksHtml();
   runDownloads();
 
   console.log('');

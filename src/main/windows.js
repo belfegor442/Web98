@@ -19,6 +19,7 @@ var DIALOG_SPEC = {
   favorites: { w: 540, h: 440, title: 'Organize Favorites' },
   history: { w: 580, h: 470, title: 'History' },
   downloads: { w: 580, h: 420, title: 'Downloads' },
+  passwords: { w: 520, h: 400, title: 'Saved Passwords' },
   settings: { w: 540, h: 520, title: 'Options' }
 };
 

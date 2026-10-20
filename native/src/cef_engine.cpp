@@ -533,6 +533,22 @@ void TabManager::OnLoadEnd(Tab* tab) {
       host->ExecuteDevToolsMethod(0, "Runtime.evaluate", params);
     }
   }
+  // pageFonts=false: force system UI fonts over the page's own font-family
+  // declarations (IE's "Ignore fonts specified on Web pages").
+  if (tab && !tab->url.empty() && isHttpUrl(tab->url) && tab->client &&
+      tab->client->browser() && tab->client->browser()->GetMainFrame() &&
+      !AppCore::get().settingsModel().getBool("pageFonts", true)) {
+    static const char* kCss =
+        "*{font-family:Segoe UI,Tahoma,sans-serif !important;}";
+    std::string js =
+        "(function(){if(document.getElementById('__web98fonts'))return;"
+        "var s=document.createElement('style');s.id='__web98fonts';"
+        "s.textContent='" +
+        std::string(kCss) +
+        "';document.documentElement.appendChild(s);})()";
+    tab->client->browser()->GetMainFrame()->ExecuteJavaScript(
+        js, tab->client->browser()->GetMainFrame()->GetURL(), 0);
+  }
   // A background-load turn completed: refill the parallel restore pipeline.
   if (tab) {
     auto it = std::find(flushInflight_.begin(), flushInflight_.end(), tab->id);

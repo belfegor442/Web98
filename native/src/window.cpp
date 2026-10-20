@@ -499,6 +499,7 @@ const DialogSpec* specFor(const std::string& page) {
       {"history", {"History", 580, 470, false}},
       {"downloads", {"Downloads", 580, 420, false}},
       {"pageinfo", {"Page Information", 480, 420, false}},
+      {"passwords", {"Saved Passwords", 520, 400, false}},
       {"settings", {"Options", 540, 520, false}},
   };
   auto it = specs.find(page);

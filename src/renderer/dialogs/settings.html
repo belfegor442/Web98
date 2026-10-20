@@ -259,6 +259,10 @@
               <input type="checkbox" id="ck-throb" checked />
               Animate the throbber while loading
             </label>
+            <label class="w98-check">
+              <input type="checkbox" id="ck-pagefonts" checked />
+              Use fonts specified by web pages
+            </label>
           </fieldset>
           <fieldset class="w98-group grp">
             <legend>Performance</legend>
@@ -341,6 +345,7 @@
         var ckThrob = document.getElementById('ck-throb');
         var ckSleep = document.getElementById('ck-sleep');
         var ckHw = document.getElementById('ck-hw');
+        var ckPageFonts = document.getElementById('ck-pagefonts');
         var selSleep = document.getElementById('sel-sleepdelay');
         var afIds = ['first', 'last', 'company', 'address1', 'address2',
                      'city', 'state', 'zip', 'country', 'phone', 'email'];
@@ -358,6 +363,7 @@
           pending.linksBar = ckLinks.checked;
           pending.throbber = ckThrob.checked;
           pending.hwAccel = ckHw.checked;
+          pending.pageFonts = ckPageFonts.checked;
           pending.sleepTabs = ckSleep.checked;
           pending.sleepTabsDelay = Number(selSleep.value) || 300;
           pending.downloadsDir = inDl.value.trim() || null;
@@ -390,6 +396,7 @@
           ckLinks.checked = !!pending.linksBar;
           ckThrob.checked = pending.throbber !== false;
           ckHw.checked = pending.hwAccel !== false;
+          ckPageFonts.checked = pending.pageFonts !== false;
           ckSleep.checked = pending.sleepTabs !== false;
           selSleep.value = String(pending.sleepTabsDelay || 300);
           if (selSleep.selectedIndex < 0) selSleep.value = '300';
@@ -496,6 +503,7 @@
             linksBar: pending.linksBar,
             throbber: pending.throbber,
             hwAccel: pending.hwAccel,
+            pageFonts: pending.pageFonts,
             sleepTabs: pending.sleepTabs,
             sleepTabsDelay: pending.sleepTabsDelay,
             downloadsDir: pending.downloadsDir,

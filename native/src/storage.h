@@ -2,6 +2,7 @@
 // SQLite persistence compatible with the Electron Web98 schema
 // (settings/history/bookmarks in <profile>/web98.db). Opening the existing
 // file in place IS the data migration: no conversion, no reset.
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
@@ -35,6 +36,14 @@ struct HistoryQuery {
   int64_t since = 0;
   int64_t until = 0;
   int limit = 200;
+};
+
+struct LoginRow {
+  int64_t id = 0;
+  std::string origin;
+  std::string username;
+  int64_t created = 0;
+  int64_t updated = 0;
 };
 
 class Storage {
@@ -76,6 +85,14 @@ class Storage {
   bool toggleBookmarkQuick(int64_t id, bool* outQuick = nullptr);
   std::vector<BookmarkRow> listQuickBookmarks();
 
+  // --- saved logins (DPAPI-encrypted secret blobs) ------------------------
+  bool upsertLogin(const std::string& origin, const std::string& username,
+                   const std::vector<uint8_t>& secret);
+  std::vector<LoginRow> listLogins(const std::string& origin = std::string());
+  bool getLoginSecret(int64_t id, std::vector<uint8_t>& out);
+  void deleteLogin(int64_t id);
+  void clearLogins();
+
  private:
   bool exec(const char* sql);
   sqlite3_stmt* prep(const char* sql);
@@ -105,6 +122,11 @@ class Storage {
   sqlite3_stmt* stNextPos_ = nullptr;
   sqlite3_stmt* stCountBookmarks_ = nullptr;
   sqlite3_stmt* stToggleQuick_ = nullptr;
+  sqlite3_stmt* stUpsertLogin_ = nullptr;
+  sqlite3_stmt* stListLogins_ = nullptr;
+  sqlite3_stmt* stGetLoginSecret_ = nullptr;
+  sqlite3_stmt* stDelLogin_ = nullptr;
+  sqlite3_stmt* stClearLogins_ = nullptr;
 };
 
 }  // namespace web98

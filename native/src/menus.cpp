@@ -525,6 +525,10 @@ bool runCommand(const std::string& name, const Json& arg, const CommandCtx& ctx)
     app.openDialog("history", win);
     return true;
   }
+  if (name == "tools:passwords") {
+    app.openDialog("passwords", win);
+    return true;
+  }
   if (name == "tools:settings") {
     app.openDialog("settings", win);
     return true;

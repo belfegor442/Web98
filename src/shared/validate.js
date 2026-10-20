@@ -102,11 +102,24 @@ function sanitizeSettingsPatch(patch) {
         else if (Array.isArray(v)) rejected.push(key);
         break;
       }
+      case 'alwaysAskWhere':
+      case 'animEnabled':
+      case 'focusOutlines':
+      case 'hwAccel':
+      case 'linksBar':
+      case 'pageFonts':
+      case 'popupBlocker':
       case 'sessionRestore':
+      case 'sleepTabs':
       case 'statusBar':
+      case 'throbber':
       case 'toolbarVisible':
         if (typeof v === 'boolean') out[key] = v;
         else rejected.push(key);
+        break;
+      case 'sleepTabsDelay':
+        out.sleepTabsDelay = clampNumber(v, 30, 43200, 300);
+        if (!Number.isFinite(Number(v))) rejected.push(key);
         break;
       case 'zoom':
         out.zoom = clampNumber(v, 0.25, 3, 1);
@@ -118,6 +131,28 @@ function sanitizeSettingsPatch(patch) {
           out.downloadsDir = v;
         } else rejected.push(key);
         break;
+      case 'autofill': {
+        if (v == null) { out.autofill = null; break; }
+        if (!isPlainObject(v)) { rejected.push(key); break; }
+        var fields = ['firstName', 'lastName', 'company', 'address1', 'address2',
+                      'city', 'state', 'zip', 'country', 'phone', 'email'];
+        var af = {};
+        fields.forEach(function (f) {
+          if (typeof v[f] === 'string') af[f] = sanitizeText(v[f], 128);
+        });
+        out.autofill = Object.keys(af).length ? af : null;
+        break;
+      }
+      case 'textEncoding': {
+        if (v == null) { out.textEncoding = null; break; }
+        var encs = ['', 'UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'windows-1252',
+                    'ISO-8859-2', 'windows-1250', 'windows-1251', 'KOI8-R',
+                    'Shift_JIS', 'EUC-JP', 'GB2312', 'GBK', 'Big5', 'EUC-KR',
+                    'ISO-2022-JP'];
+        if (typeof v === 'string' && encs.indexOf(v) !== -1) out.textEncoding = v;
+        else rejected.push(key);
+        break;
+      }
       default:
         rejected.push(key); // includes permissions, lastSession, etc.
     }

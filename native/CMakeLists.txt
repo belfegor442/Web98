@@ -75,6 +75,10 @@ set(WEB98_CORE_SRCS
   src/security.h
   src/base.cpp
   src/base.h
+  src/passwords.cpp
+  src/passwords.h
+  src/bookmarks_html.cpp
+  src/bookmarks_html.h
   )
 
 # ---------------------------------------------------------------------------
@@ -126,9 +130,10 @@ endif()
 target_include_directories(${CEF_TARGET} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_dependencies(${CEF_TARGET} libcef_dll_wrapper sqlite3)
 # CEF_STANDARD_LIBS lacks shell32/ole32 (SHGetKnownFolderPath in base.cpp)
-# and psapi (GetProcessMemoryInfo in app_core.cpp).
+# and psapi (GetProcessMemoryInfo in app_core.cpp). crypt32 = DPAPI
+# (CryptProtectData in passwords.cpp).
 target_link_libraries(${CEF_TARGET} libcef_lib libcef_dll_wrapper sqlite3
-  shell32 ole32 psapi gdiplus ${CEF_STANDARD_LIBS})
+  shell32 ole32 psapi gdiplus crypt32 ${CEF_STANDARD_LIBS})
 
 # Local pages (renderer) + assets, mirroring the repo layout so the
 # ../../assets and ../../css references inside the pages keep working:
@@ -164,7 +169,8 @@ add_executable(web98_unit ${WEB98_UNIT_SRCS})
 SET_EXECUTABLE_TARGET_PROPERTIES(web98_unit)
 target_include_directories(web98_unit PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 # base.cpp uses SHGetKnownFolderPath (shell32/ole32) and shlwapi helpers.
-target_link_libraries(web98_unit sqlite3 shell32 ole32 shlwapi uuid)
+# passwords.cpp uses CryptProtectData (crypt32).
+target_link_libraries(web98_unit sqlite3 shell32 ole32 shlwapi uuid crypt32)
 set_target_properties(web98_unit PROPERTIES
   VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:web98_unit>"
   RUNTIME_OUTPUT_DIRECTORY "${CEF_TARGET_OUT_DIR}"

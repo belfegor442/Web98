@@ -245,6 +245,7 @@
       id: 'tools', label: 'Tools', items: [
         { cmd: 'tools:history', label: 'History...', hint: 'Ctrl+H' },
         { cmd: 'tools:downloads', label: 'Downloads...', hint: 'Ctrl+J' },
+        { cmd: 'tools:passwords', label: 'Passwords...' },
         { sep: true },
         { cmd: 'tools:settings', label: 'Internet Options...' }
       ]

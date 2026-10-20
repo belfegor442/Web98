@@ -14,7 +14,9 @@ var SCHEMA = [
   'CREATE INDEX IF NOT EXISTS history_ts ON history (ts DESC)',
   'CREATE INDEX IF NOT EXISTS history_url ON history (url)',
   'CREATE TABLE IF NOT EXISTS bookmarks (id INTEGER PRIMARY KEY AUTOINCREMENT, parent INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL, url TEXT NOT NULL DEFAULT "", position INTEGER NOT NULL DEFAULT 0)',
-  'CREATE INDEX IF NOT EXISTS bookmarks_parent ON bookmarks (parent, position)'
+  'CREATE INDEX IF NOT EXISTS bookmarks_parent ON bookmarks (parent, position)',
+  'CREATE TABLE IF NOT EXISTS logins (id INTEGER PRIMARY KEY AUTOINCREMENT, origin TEXT NOT NULL, username TEXT NOT NULL DEFAULT "", secret BLOB NOT NULL, created INTEGER NOT NULL, updated INTEGER NOT NULL)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS logins_key ON logins (origin, username)'
 ];
 
 function openStore(dbPath, opts) {
@@ -68,7 +70,18 @@ function openStore(dbPath, opts) {
     nextBookmarkPos: db.prepare(
       'SELECT COALESCE(MAX(position), -1) + 1 AS p FROM bookmarks WHERE parent = ?'
     ),
-    countBookmarks: db.prepare('SELECT COUNT(*) AS n FROM bookmarks')
+    countBookmarks: db.prepare('SELECT COUNT(*) AS n FROM bookmarks'),
+
+    upsertLogin: db.prepare(
+      'INSERT INTO logins (origin, username, secret, created, updated) VALUES (?, ?, ?, ?, ?) ' +
+        'ON CONFLICT(origin, username) DO UPDATE SET secret = excluded.secret, updated = excluded.updated'
+    ),
+    listLogins: db.prepare(
+      'SELECT id, origin, username, created, updated FROM logins WHERE origin = ? OR ? = \'\' ORDER BY origin, username'
+    ),
+    getLoginSecret: db.prepare('SELECT secret FROM logins WHERE id = ?'),
+    delLogin: db.prepare('DELETE FROM logins WHERE id = ?'),
+    clearLogins: db.prepare('DELETE FROM logins')
   };
 
   historyCount = stmts.countHistory.get().n;
@@ -175,6 +188,26 @@ function openStore(dbPath, opts) {
     },
     countBookmarks: function () {
       return stmts.countBookmarks.get().n;
+    },
+
+    /* --------------------------- saved logins ---------------------------- */
+    upsertLogin: function (origin, username, secret) {
+      var now = Date.now();
+      stmts.upsertLogin.run(origin, username || '', secret, now, now);
+      return true;
+    },
+    listLogins: function (origin) {
+      return stmts.listLogins.all(origin || '', origin || '');
+    },
+    getLoginSecret: function (id) {
+      var row = stmts.getLoginSecret.get(id);
+      return row ? row.secret : null;
+    },
+    deleteLogin: function (id) {
+      stmts.delLogin.run(id);
+    },
+    clearLogins: function () {
+      stmts.clearLogins.run();
     },
 
     close: function () {

@@ -22,8 +22,20 @@ function defaults(appPaths) {
     sessionRestore: true,
     statusBar: true,
     toolbarVisible: true,
+    alwaysAskWhere: false,
+    animEnabled: true,
+    focusOutlines: false,
+    hwAccel: true,
+    linksBar: false,
+    pageFonts: true,
+    popupBlocker: true,
+    sleepTabs: true,
+    sleepTabsDelay: 300,
+    throbber: true,
     zoom: 1,
     downloadsDir: null,
+    autofill: null,
+    textEncoding: null,
     permissions: {},
     lastSession: null
   };
@@ -66,9 +78,12 @@ function createSettings(store, appPaths) {
       (typeof cache.downloadsDir !== 'string' || !path.isAbsolute(cache.downloadsDir))) {
     cache.downloadsDir = null;
   }
-  ['sessionRestore', 'statusBar', 'toolbarVisible'].forEach(function (k) {
+  ['sessionRestore', 'statusBar', 'toolbarVisible', 'alwaysAskWhere', 'animEnabled',
+    'focusOutlines', 'hwAccel', 'linksBar', 'pageFonts', 'popupBlocker', 'sleepTabs',
+    'throbber'].forEach(function (k) {
     cache[k] = !!cache[k];
   });
+  cache.sleepTabsDelay = validate.clampNumber(cache.sleepTabsDelay, 30, 43200, 300);
   if (!Array.isArray(cache.engines) || !cache.engines.length) {
     cache.engines = defaults(appPaths).engines;
   }

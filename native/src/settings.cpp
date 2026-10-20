@@ -243,9 +243,9 @@ bool sanitizeSettingsPatchValue(const std::string& key, const Json& in, Json& ou
     return false;  // non-array silently ignored (JS: no out, no rejected)
   }
   if (key == "alwaysAskWhere" || key == "animEnabled" || key == "focusOutlines" ||
-      key == "hwAccel" || key == "linksBar" || key == "popupBlocker" ||
-      key == "sessionRestore" || key == "sleepTabs" || key == "statusBar" ||
-      key == "throbber" || key == "toolbarVisible") {
+      key == "hwAccel" || key == "linksBar" || key == "pageFonts" ||
+      key == "popupBlocker" || key == "sessionRestore" || key == "sleepTabs" ||
+      key == "statusBar" || key == "throbber" || key == "toolbarVisible") {
     if (in.isBool()) {
       out = in;
       return true;
@@ -348,6 +348,10 @@ bool sanitizeSettingsPatchValue(const std::string& key, const Json& in, Json& ou
 Json validateStoredValue(const std::string& key, const Json& raw) {
   if (key == "permissions") return sanitizePermissions(raw);
   if (key == "lastSession") return raw;
+  if (key == "pageFonts") {
+    if (raw.isBool()) return raw;
+    return Json();
+  }
   if (key == "homepage") {
     if (raw.isString() && isLoadableUrl(raw.str)) return raw;
     return Json();
@@ -442,6 +446,7 @@ void SettingsModel::initEmpty() {
   cache_.obj.emplace_back("throbber", Json::makeBool(true));
   cache_.obj.emplace_back("toolbarVisible", Json::makeBool(true));
   cache_.obj.emplace_back("zoom", Json::makeNumber(1));
+  cache_.obj.emplace_back("pageFonts", Json::makeBool(true));
   cache_.obj.emplace_back("downloadsDir", Json::makeNull());
   cache_.obj.emplace_back("permissions", Json::makeObject());
   cache_.obj.emplace_back("lastSession", Json::makeNull());

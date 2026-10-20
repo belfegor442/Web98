@@ -4,6 +4,8 @@
 
 #include <algorithm>
 
+#include "base.h"
+
 namespace web98 {
 namespace {
 
@@ -16,7 +18,11 @@ const char* kSchema =
     "CREATE TABLE IF NOT EXISTS bookmarks (id INTEGER PRIMARY KEY AUTOINCREMENT, "
     "parent INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL, "
     "url TEXT NOT NULL DEFAULT \"\", position INTEGER NOT NULL DEFAULT 0);"
-    "CREATE INDEX IF NOT EXISTS bookmarks_parent ON bookmarks (parent, position);";
+    "CREATE INDEX IF NOT EXISTS bookmarks_parent ON bookmarks (parent, position);"
+    "CREATE TABLE IF NOT EXISTS logins (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+    "origin TEXT NOT NULL, username TEXT NOT NULL DEFAULT \"\", "
+    "secret BLOB NOT NULL, created INTEGER NOT NULL, updated INTEGER NOT NULL);"
+    "CREATE UNIQUE INDEX IF NOT EXISTS logins_key ON logins (origin, username);";
 // Migration: add quick-access column. ALTER is a no-op error if it exists,
 // which we ignore.
 const char* kMigrateQuick =
@@ -104,6 +110,17 @@ bool Storage::open(const std::string& path, int historyLimit) {
   stNextPos_ =
       prep("SELECT COALESCE(MAX(position), -1) + 1 AS p FROM bookmarks WHERE parent = ?");
   stCountBookmarks_ = prep("SELECT COUNT(*) AS n FROM bookmarks");
+  stUpsertLogin_ =
+      prep("INSERT INTO logins (origin, username, secret, created, updated) "
+           "VALUES (?, ?, ?, ?, ?) "
+           "ON CONFLICT(origin, username) DO UPDATE SET secret = excluded.secret, "
+           "updated = excluded.updated");
+  stListLogins_ =
+      prep("SELECT id, origin, username, created, updated FROM logins "
+           "WHERE ?1 = '' OR origin = ?1 ORDER BY origin, username");
+  stGetLoginSecret_ = prep("SELECT secret FROM logins WHERE id = ?");
+  stDelLogin_ = prep("DELETE FROM logins WHERE id = ?");
+  stClearLogins_ = prep("DELETE FROM logins");
 
   if (!stGetSetting_ || !stSetSetting_ || !stAddHistory_ || !stAddBookmark_) {
     close();
@@ -139,6 +156,11 @@ void Storage::close() {
   drop(stDelTree_);
   drop(stNextPos_);
   drop(stCountBookmarks_);
+  drop(stUpsertLogin_);
+  drop(stListLogins_);
+  drop(stGetLoginSecret_);
+  drop(stDelLogin_);
+  drop(stClearLogins_);
   drop(stToggleQuick_);
   if (db_) {
     sqlite3_close(db_);
@@ -407,6 +429,79 @@ std::vector<BookmarkRow> Storage::listQuickBookmarks() {
   for (auto& b : listBookmarks())
     if (b.quick && !b.url.empty()) out.push_back(std::move(b));
   return out;
+}
+
+/* ------------------------------ saved logins ------------------------------- */
+
+bool Storage::upsertLogin(const std::string& origin, const std::string& username,
+                          const std::vector<uint8_t>& secret) {
+  if (!stUpsertLogin_ || origin.empty() || secret.empty()) return false;
+  int64_t now = nowMs();
+  sqlite3_reset(stUpsertLogin_);
+  sqlite3_bind_text(stUpsertLogin_, 1, origin.c_str(),
+                    static_cast<int>(origin.size()), SQLITE_TRANSIENT);
+  sqlite3_bind_text(stUpsertLogin_, 2, username.c_str(),
+                    static_cast<int>(username.size()), SQLITE_TRANSIENT);
+  sqlite3_bind_blob(stUpsertLogin_, 3, secret.data(),
+                    static_cast<int>(secret.size()), SQLITE_TRANSIENT);
+  sqlite3_bind_int64(stUpsertLogin_, 4, now);
+  sqlite3_bind_int64(stUpsertLogin_, 5, now);
+  bool ok = sqlite3_step(stUpsertLogin_) == SQLITE_DONE;
+  sqlite3_reset(stUpsertLogin_);
+  return ok;
+}
+
+std::vector<LoginRow> Storage::listLogins(const std::string& origin) {
+  std::vector<LoginRow> out;
+  if (!stListLogins_) return out;
+  sqlite3_reset(stListLogins_);
+  sqlite3_bind_text(stListLogins_, 1, origin.c_str(),
+                    static_cast<int>(origin.size()), SQLITE_TRANSIENT);
+  while (sqlite3_step(stListLogins_) == SQLITE_ROW) {
+    LoginRow r;
+    r.id = sqlite3_column_int64(stListLogins_, 0);
+    r.origin = columnText(stListLogins_, 1);
+    r.username = columnText(stListLogins_, 2);
+    r.created = sqlite3_column_int64(stListLogins_, 3);
+    r.updated = sqlite3_column_int64(stListLogins_, 4);
+    out.push_back(std::move(r));
+  }
+  sqlite3_reset(stListLogins_);
+  return out;
+}
+
+bool Storage::getLoginSecret(int64_t id, std::vector<uint8_t>& out) {
+  out.clear();
+  if (!stGetLoginSecret_) return false;
+  sqlite3_reset(stGetLoginSecret_);
+  sqlite3_bind_int64(stGetLoginSecret_, 1, id);
+  bool ok = false;
+  if (sqlite3_step(stGetLoginSecret_) == SQLITE_ROW) {
+    const void* p = sqlite3_column_blob(stGetLoginSecret_, 0);
+    int n = sqlite3_column_bytes(stGetLoginSecret_, 0);
+    if (p && n > 0) {
+      const uint8_t* b = static_cast<const uint8_t*>(p);
+      out.assign(b, b + n);
+      ok = true;
+    }
+  }
+  sqlite3_reset(stGetLoginSecret_);
+  return ok;
+}
+
+void Storage::deleteLogin(int64_t id) {
+  if (!stDelLogin_) return;
+  sqlite3_reset(stDelLogin_);
+  sqlite3_bind_int64(stDelLogin_, 1, id);
+  sqlite3_step(stDelLogin_);
+  sqlite3_reset(stDelLogin_);
+}
+
+void Storage::clearLogins() {
+  if (!stClearLogins_) return;
+  sqlite3_reset(stClearLogins_);
+  sqlite3_step(stClearLogins_);
+  sqlite3_reset(stClearLogins_);
 }
 
 }  // namespace web98

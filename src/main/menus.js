@@ -132,6 +132,9 @@ function runCommand(name, arg, ctx) {
     case 'tools:history':
       ctx.windows.openDialog('history', null, win);
       return true;
+    case 'tools:passwords':
+      ctx.windows.openDialog('passwords', null, win);
+      return true;
     case 'tools:settings':
       ctx.windows.openDialog('settings', null, win);
       return true;

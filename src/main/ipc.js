@@ -12,11 +12,12 @@ var { ipcMain, dialog, clipboard, app } = require('electron');
 var { parseAddress } = require('../shared/urlbar');
 var safeurl = require('../shared/safeurl');
 var validate = require('../shared/validate');
+var bookmarksHtml = require('../shared/bookmarks_html');
 var menus = require('./menus');
 
 var COMMAND_NAME_RE = /^[a-z][a-z0-9\-]*:[a-z0-9\-]+$/;
 var CONTEXT_COMMAND_RE = /^[a-z][a-z0-9\-]*$/;
-var DIALOG_PAGES = ['about', 'downloads', 'favorites', 'history', 'settings', 'source'];
+var DIALOG_PAGES = ['about', 'downloads', 'favorites', 'history', 'passwords', 'settings', 'source'];
 var ERROR_PAGE = path.join(__dirname, '..', 'renderer', 'error.html');
 
 function registerIpc(deps) {
@@ -263,12 +264,12 @@ function registerIpc(deps) {
     var win = senderWindow(e);
     var res = dialog.showSaveDialogSync(win, {
       title: 'Export Favorites',
-      defaultPath: 'web98-favorites.html.json',
-      filters: [{ name: 'JSON', extensions: ['json'] }]
+      defaultPath: 'favorites.htm',
+      filters: [{ name: 'HTML', extensions: ['htm', 'html'] }]
     });
     if (!res) return { ok: false };
     try {
-      fs.writeFileSync(res, JSON.stringify({ bookmarks: store.listBookmarks() }, null, 2), 'utf8');
+      fs.writeFileSync(res, bookmarksHtml.exportNetscapeHtml(store.listBookmarks()), 'utf8');
       return { ok: true, path: res };
     } catch (err) {
       return { ok: false, error: String(err.message || err) };
@@ -278,11 +279,28 @@ function registerIpc(deps) {
     var win = senderWindow(e);
     var res = dialog.showOpenDialogSync(win, {
       title: 'Import Favorites',
-      filters: [{ name: 'JSON', extensions: ['json'] }]
+      filters: [{ name: 'Favorites', extensions: ['htm', 'html', 'json'] }]
     });
     if (!res || !res.length) return { ok: false };
     try {
-      var data = JSON.parse(fs.readFileSync(res[0], 'utf8'));
+      var text = fs.readFileSync(res[0], 'utf8');
+      // Netscape HTML (classic IE favorites export).
+      var parsed = bookmarksHtml.parseNetscapeHtml(text);
+      if (parsed.ok) {
+        var count = 0;
+        (function addNodes(list, parent) {
+          list.forEach(function (node) {
+            if (node.url && !safeurl.isBookmarkUrl(node.url)) return;
+            var row = store.addBookmark({ parent: parent, name: node.name || node.url || 'Favorite', url: node.url || '' });
+            count++;
+            if (!node.url) addNodes(node.children, row.id);
+          });
+        })(parsed.nodes, 0);
+        changedBooks();
+        return { ok: true, count: count };
+      }
+      // Legacy JSON format.
+      var data = JSON.parse(text);
       var bookmarks = validate.sanitizeBookmarkList(data && data.bookmarks);
       if (!bookmarks.length && !(Array.isArray(data && data.bookmarks) && data.bookmarks.length === 0)) {
         throw new Error('bad format');
@@ -329,6 +347,75 @@ function registerIpc(deps) {
   ipcMain.handle('downloads:clearFinished', function () { deps.downloads.clearFinished(); });
   ipcMain.handle('downloads:open', function (e, d) { var id = downloadId(d); return id != null ? deps.downloads.openFile(id) : { ok: false }; });
   ipcMain.handle('downloads:showFolder', function (e, d) { var id = downloadId(d); return id != null ? deps.downloads.showFolder(id) : { ok: false }; });
+
+  /* ----------------------------- passwords ----------------------------- */
+  // Secrets are encrypted at rest with Electron safeStorage (DPAPI on Windows).
+  function originFromUrl(u) {
+    if (typeof u !== 'string' || !u) return '';
+    try {
+      var parsed = new URL(u);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+      return parsed.protocol + '//' + parsed.host;
+    } catch (err) {
+      return '';
+    }
+  }
+  function encryptSecret(plain) {
+    try {
+      var { safeStorage } = require('electron');
+      if (!safeStorage.isEncryptionAvailable()) return null;
+      return safeStorage.encryptString(plain);
+    } catch (err) {
+      return null;
+    }
+  }
+  function decryptSecret(blob) {
+    try {
+      var { safeStorage } = require('electron');
+      return safeStorage.decryptString(Buffer.from(blob));
+    } catch (err) {
+      return '';
+    }
+  }
+  function requireDialog(e) {
+    if (!isDialogSender(e)) throw new Error('Dialog window required');
+  }
+  ipcMain.handle('passwords:list', function (e, data) {
+    requireDialog(e);
+    var origin = data && typeof data.origin === 'string' ? data.origin.slice(0, 512) : '';
+    return store.listLogins(origin).map(function (r) {
+      return { id: r.id, origin: r.origin, username: r.username, created: r.created, updated: r.updated };
+    });
+  });
+  ipcMain.handle('passwords:get', function (e, data) {
+    requireDialog(e);
+    var id = validate.sanitizeId(data && data.id);
+    if (id == null) return { ok: false };
+    var blob = store.getLoginSecret(id);
+    if (!blob) return { ok: false };
+    var plain = decryptSecret(blob);
+    return plain ? { ok: true, password: plain } : { ok: false };
+  });
+  ipcMain.handle('passwords:save', function (e, data) {
+    requireDialog(e);
+    var origin = originFromUrl(data && data.origin) || (typeof (data && data.origin) === 'string' ? data.origin.slice(0, 512) : '');
+    var user = typeof (data && data.username) === 'string' ? data.username.slice(0, 256) : '';
+    var pass = typeof (data && data.password) === 'string' ? data.password.slice(0, 1024) : '';
+    if (!origin || !pass) return { ok: false };
+    var blob = encryptSecret(pass);
+    if (!blob) return { ok: false };
+    store.upsertLogin(origin, user, blob);
+    return { ok: true };
+  });
+  ipcMain.handle('passwords:delete', function (e, data) {
+    requireDialog(e);
+    var id = validate.sanitizeId(data && data.id);
+    if (id != null) store.deleteLogin(id);
+  });
+  ipcMain.handle('passwords:clear', function (e) {
+    requireDialog(e);
+    store.clearLogins();
+  });
 
   /* ------------------------------ settings ----------------------------- */
   ipcMain.handle('settings:get', function () {

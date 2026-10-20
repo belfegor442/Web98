@@ -11,8 +11,10 @@
 #include <vector>
 
 #include "base.h"
+#include "bookmarks_html.h"
 #include "dlpath.h"
 #include "json.h"
+#include "passwords.h"
 #include "safeurl.h"
 #include "security.h"
 #include "settings.h"
@@ -542,6 +544,123 @@ void runBase() {
   CHECK_EQ_STR(b, base64Encode(man, 3), "TWFu");
 }
 
+/* -------------------------------- passwords ------------------------------- */
+
+void runPasswords() {
+  const char* n = "originFromUrl";
+  CHECK_EQ_STR(n, originFromUrl("https://Sub.Example.com:8443/x"), "https://sub.example.com:8443");
+  CHECK_EQ_STR(n, originFromUrl("https://example.com:443/a"), "https://example.com");
+  CHECK_EQ_STR(n, originFromUrl("http://example.com:80/"), "http://example.com");
+  CHECK_EQ_STR(n, originFromUrl("https://user:pass@example.com/x"), "https://example.com");
+  CHECK_EQ_STR(n, originFromUrl("https://example.com"), "https://example.com");
+  CHECK_EQ_STR(n, originFromUrl("https://[::1]:8443/p"), "https://[::1]:8443");
+  CHECK_EQ_STR(n, originFromUrl("ftp://example.com/"), "");
+  CHECK_EQ_STR(n, originFromUrl("javascript:alert(1)"), "");
+  CHECK_EQ_STR(n, originFromUrl("https://a@b@host/"), "https://host");
+  CHECK_EQ_STR(n, originFromUrl(""), "");
+  CHECK_EQ_STR(n, originFromUrl(std::string(8193, 'x')), "");
+  CHECK_EQ_STR(n, originFromUrl("https://bad host/"), "");
+  CHECK_EQ_STR(n, originFromUrl("https://h:99999/"), "");
+
+  const char* d = "dpapi";
+  std::vector<uint8_t> plain = {'s', '3', 'c', 'r', 'e', 't'};
+  std::vector<uint8_t> blob = dpapiProtect(plain);
+  CHECK(d, !blob.empty());
+  std::vector<uint8_t> back = dpapiUnprotect(blob);
+  CHECK(d, back == plain);
+  CHECK(d, dpapiProtect({}).empty());
+  CHECK(d, dpapiUnprotect({}).empty());
+}
+
+/* ------------------------------ bookmarks_html ----------------------------- */
+
+void runBookmarksHtml() {
+  const char* n = "bookmarks_html";
+
+  // Entities round-trip via bmDecodeEntities.
+  CHECK_EQ_STR(n, bmDecodeEntities("a&amp;b&lt;c&gt;d&quot;e&#39;f"), "a&b<c>d\"e'f");
+  CHECK_EQ_STR(n, bmDecodeEntities("&#x41;&#66;"), "AB");
+  CHECK_EQ_STR(n, bmDecodeEntities("plain &unknown; keep"), "plain &unknown; keep");
+
+  // Export -> parse round-trip with a folder tree.
+  std::vector<BookmarkRow> rows;
+  BookmarkRow f; f.id = 1; f.parent = 0; f.name = "Folder & Co"; f.url = "";
+  BookmarkRow a; a.id = 2; a.parent = 1; a.name = "Alpha <tag>"; a.url = "https://a.example/";
+  BookmarkRow b; b.id = 3; b.parent = 0; b.name = "Beta"; b.url = "https://b.example/?x=1&y=2";
+  rows.push_back(f); rows.push_back(a); rows.push_back(b);
+
+  std::string html = exportNetscapeHtml(rows);
+  CHECK(n, html.find("<!DOCTYPE NETSCAPE-ABookmark-file-1>") != std::string::npos);
+  CHECK(n, html.find("Folder &amp; Co") != std::string::npos);
+  CHECK(n, html.find("Alpha &lt;tag&gt;") != std::string::npos);
+
+  std::vector<BmNode> out;
+  CHECK(n, parseNetscapeHtml(html, out));
+  CHECK_EQ_INT(n, out.size(), 2);
+  // Order: folder first (insertion order), then root link.
+  CHECK_EQ_STR(n, out[0].name, "Folder & Co");
+  CHECK(n, out[0].url.empty());
+  CHECK_EQ_INT(n, out[0].children.size(), 1);
+  CHECK_EQ_STR(n, out[0].children[0].name, "Alpha <tag>");
+  CHECK_EQ_STR(n, out[0].children[0].url, "https://a.example/");
+  CHECK_EQ_STR(n, out[1].name, "Beta");
+  CHECK_EQ_STR(n, out[1].url, "https://b.example/?x=1&y=2");
+
+  // Malformed / empty input.
+  std::vector<BmNode> bad;
+  CHECK(n, !parseNetscapeHtml("", bad));
+  CHECK(n, !parseNetscapeHtml("<html><body>no bookmarks</body></html>", bad));
+}
+
+/* ------------------------------ logins storage ---------------------------- */
+
+void runLogins() {
+  const char* n = "logins";
+  wchar_t tmp[MAX_PATH];
+  ::GetTempPathW(MAX_PATH, tmp);
+  std::string dir = toUtf8(tmp) + "web98-native-unit";
+  ensureDirTree(dir);
+  std::string db = pathJoin(dir, "logins.db");
+  ::DeleteFileA(db.c_str());
+
+  Storage s;
+  CHECK(n, s.open(db));
+
+  std::vector<uint8_t> secret = {1, 2, 3, 4};
+  CHECK(n, s.upsertLogin("https://a.example", "alice", secret));
+  CHECK(n, s.upsertLogin("https://b.example", "bob", secret));
+  CHECK_EQ_INT(n, s.listLogins().size(), 2);
+  CHECK_EQ_INT(n, s.listLogins("https://a.example").size(), 1);
+
+  auto rows = s.listLogins("https://a.example");
+  CHECK_EQ_INT(n, rows.size(), 1);
+  CHECK_EQ_STR(n, rows[0].username, "alice");
+
+  std::vector<uint8_t> got;
+  CHECK(n, s.getLoginSecret(rows[0].id, got));
+  CHECK(n, got == secret);
+
+  // Upsert overwrites the secret for the same (origin, user).
+  std::vector<uint8_t> secret2 = {9, 9};
+  CHECK(n, s.upsertLogin("https://a.example", "alice", secret2));
+  CHECK(n, s.getLoginSecret(rows[0].id, got));
+  CHECK(n, got == secret2);
+  CHECK_EQ_INT(n, s.listLogins().size(), 2);
+
+  s.deleteLogin(rows[0].id);
+  CHECK_EQ_INT(n, s.listLogins("https://a.example").size(), 0);
+
+  s.clearLogins();
+  CHECK_EQ_INT(n, s.listLogins().size(), 0);
+
+  // Empty inputs rejected.
+  CHECK(n, !s.upsertLogin("", "u", secret));
+  CHECK(n, !s.upsertLogin("https://x", "u", {}));
+
+  s.close();
+  ::DeleteFileA(db.c_str());
+}
+
 }  // namespace
 
 int main() {
@@ -554,6 +673,9 @@ int main() {
   runSecurity();
   runDlpath();
   runBase();
+  runPasswords();
+  runBookmarksHtml();
+  runLogins();
   std::printf("%d passed, %d failed\n", g_passed, g_failed);
   return g_failed == 0 ? 0 : 1;
 }

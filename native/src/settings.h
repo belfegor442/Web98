@@ -1,6 +1,7 @@
 #pragma once
 // Settings model: defaults, load-time validation and the renderer-facing
 // patch whitelist. Ports src/main/settings.js + src/shared/validate.js.
+#include <cstdint>
 #include <string>
 #include <vector>
 

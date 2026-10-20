@@ -12,6 +12,7 @@
 #include "cef_util.h"
 #include "dialogs.h"
 #include "menus.h"
+#include "passwords.h"
 #include "safeurl.h"
 #include "security.h"
 #include "settings.h"
@@ -902,6 +903,21 @@ bool Web98Client::GetAuthCredentials(CefRefPtr<CefBrowser> browser,
     return true;
   }
   callback->Continue(user, pass);
+  // Offer to remember the credentials (DPAPI-encrypted, origin-keyed).
+  if (!isProxy && !user.empty() && !pass.empty()) {
+    std::string origin = originFromUrl(str(origin_url));
+    if (!origin.empty()) {
+      int r = dialogs::messageBox(
+          owner, "Remember this password?\n\n" + origin + "\nUser: " + user,
+          "Save Password", MB_YESNO | MB_ICONQUESTION);
+      if (r == IDYES) {
+        std::vector<uint8_t> plain(pass.begin(), pass.end());
+        std::vector<uint8_t> blob = dpapiProtect(plain);
+        if (!blob.empty())
+          AppCore::get().storage().upsertLogin(origin, user, blob);
+      }
+    }
+  }
   return true;
 }
 

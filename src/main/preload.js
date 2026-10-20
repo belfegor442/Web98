@@ -15,6 +15,8 @@ var INVOKE_CHANNELS = [
   'history:clear', 'history:delete', 'history:list',
   'nav:back', 'nav:forward', 'nav:go', 'nav:home', 'nav:reload', 'nav:stop',
   'omni:suggest',
+  'passwords:clear', 'passwords:delete', 'passwords:get', 'passwords:list',
+  'passwords:save',
   'settings:clearData', 'settings:get', 'settings:grants',
   'settings:pickDownloadsDir', 'settings:revoke',
   'settings:set',
