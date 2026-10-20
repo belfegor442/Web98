@@ -164,10 +164,9 @@ Function fLicense
   ${NSD_CreateLabel} 0 0 100% 12u "Terms and Conditions of Use"
   Pop $0
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FBold, i 0)'
-  ${NSD_CreateText} 0 14u 100% 76u ""
-  Pop $0
-  ${NSD_AddStyle} $0 0x00000844
-  ${NSD_AddStyle} $0 0x00200000
+  ; multiline readonly edit — ES_MULTILINE must be set at creation time
+  System::Call 'user32::FindWindowExW(p $HWNDPARENT, p 0, w "#32770", p 0) p.r9'
+  System::Call 'user32::CreateWindowExW(i 0, w "Edit", w "", i 0x50A10844, i 4, i 24, i 230, i 136, p $9, p 0, p 0, p 0) p.r0'
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FReg, i 0)'
   ; load full T&C (UTF-16LE) straight into the edit — avoids NSIS 8k string limit
   System::Call 'kernel32::CreateFileW(w "$PLUGINSDIR\terms.txt", i 0x80000000, i 0, p 0, i 3, i 0, p 0) p.r8'
