@@ -45,7 +45,10 @@ Var LogH
 ; ---------------------------------------------------------- layout macro
 ; Called after nsDialogs::Create in every page. Moves content panel right
 ; of a full-height banner, moves buttons to top-right, applies fonts.
-!macro LayoutInit
+; ${1} = caption function to call (ForceClassicCaption / un.ForceClassicCaption)
+!macro LayoutInit capFn
+  ; Re-apply classic caption every page (mode can flip after first paint).
+  Call ${capFn}
   ${If} $FReg == ""
     System::Call 'gdi32::CreateFontW(i -11, i 0, i 0, i 0, i 400, i 0, i 0, i 0, i 1, i 0, i 0, i 0, i 0, w "MS Sans Serif") p.r1'
     StrCpy $FReg $1
@@ -124,6 +127,7 @@ Function .onInit
   File /oname=terms.txt "terms.txt"
   System::Call 'user32::LoadImageW(p 0, w "$PLUGINSDIR\banner.bmp", i 0, i 0, i 0, i 0x0010) p.r1'
   StrCpy $BannerImg $1
+  Call ForceClassicCaption
   ; silent mode: custom pages never run, so do the install here
   IfSilent doInstall
   Goto initDone
@@ -134,6 +138,34 @@ doInstall:
 initDone:
 FunctionEnd
 
+; Win98-style title bar: prefer light chrome, then paint the caption navy
+; (#0A246A Win98 gradient start) with white text. DWM attrs 35/36 (caption/
+; text color) override dark mode entirely on Win11; attr 20/19 + ForceLight
+; cover the rest. MUST use struct syntax *(i N) — plain `*i 0` leaves the
+; buffer uninitialized and DWM reads garbage (dark mode stays on).
+!macro ForceClassicCaptionBody
+  System::Call 'uxtheme::#135(i 3)'
+  System::Call '*(i 0) p.r1'
+  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 20, p $1, i 4)'
+  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 19, p $1, i 4)'
+  System::Call 'GlobalFree(p $1)'
+  System::Call '*(i 6956042) p.r1'
+  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 35, p $1, i 4)'
+  System::Call 'GlobalFree(p $1)'
+  System::Call '*(i 16777215) p.r1'
+  System::Call 'dwmapi::DwmSetWindowAttribute(p $HWNDPARENT, i 36, p $1, i 4)'
+  System::Call 'GlobalFree(p $1)'
+  System::Call 'user32::SetWindowPos(p $HWNDPARENT, p 0, i 0, i 0, i 0, i 0, i 0x0037)'
+!macroend
+
+Function ForceClassicCaption
+  !insertmacro ForceClassicCaptionBody
+FunctionEnd
+
+Function un.ForceClassicCaption
+  !insertmacro ForceClassicCaptionBody
+FunctionEnd
+
 ; ============================================================ WELCOME
 Page custom fWelcome
 Function fWelcome
@@ -142,7 +174,7 @@ Function fWelcome
   ${If} $0 == error
     Abort
   ${EndIf}
-  !insertmacro LayoutInit
+  !insertmacro LayoutInit ForceClassicCaption
   ${NSD_CreateLabel} 0 4 100% 14u "Welcome to the Web98 Setup"
   Pop $0
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FBold, i 0)'
@@ -160,13 +192,16 @@ Function fLicense
   ${If} $0 == error
     Abort
   ${EndIf}
-  !insertmacro LayoutInit
+  !insertmacro LayoutInit ForceClassicCaption
   ${NSD_CreateLabel} 0 0 100% 12u "Terms and Conditions of Use"
   Pop $0
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FBold, i 0)'
-  ; multiline readonly edit — ES_MULTILINE must be set at creation time
+  ; multiline readonly edit — ES_MULTILINE must be set at creation time.
+  ; $R2 = main client width (set by LayoutInit): panel = $R2-182, minus 4+4 padding.
+  ; Height 116 keeps the bottom (~140px) above the radios at 92u (~150px).
   System::Call 'user32::FindWindowExW(p $HWNDPARENT, p 0, w "#32770", p 0) p.r9'
-  System::Call 'user32::CreateWindowExW(i 0, w "Edit", w "", i 0x50A10844, i 4, i 24, i 230, i 136, p $9, p 0, p 0, p 0) p.r0'
+  IntOp $1 $R2 - 190
+  System::Call 'user32::CreateWindowExW(i 0, w "Edit", w "", i 0x50A10844, i 4, i 24, i $1, i 116, p $9, p 0, p 0, p 0) p.r0'
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FReg, i 0)'
   ; load full T&C (UTF-16LE) straight into the edit — avoids NSIS 8k string limit
   System::Call 'kernel32::CreateFileW(w "$PLUGINSDIR\terms.txt", i 0x80000000, i 0, p 0, i 3, i 0, p 0) p.r8'
@@ -224,7 +259,7 @@ Function fDir
   ${If} $0 == error
     Abort
   ${EndIf}
-  !insertmacro LayoutInit
+  !insertmacro LayoutInit ForceClassicCaption
   ${NSD_CreateLabel} 0 0 100% 12u "Choose Install Location"
   Pop $0
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FBold, i 0)'
@@ -270,16 +305,18 @@ Function fOptions
   ${If} $0 == error
     Abort
   ${EndIf}
-  !insertmacro LayoutInit
+  !insertmacro LayoutInit ForceClassicCaption
   ${NSD_CreateLabel} 0 0 100% 12u "Installation Options"
   Pop $0
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FBold, i 0)'
-  ${NSD_CreateCheckbox} 0 20u 100% 10u "Create a &desktop shortcut"
+  ${NSD_CreateCheckbox} 0 20u 100% 14u "Create a &desktop shortcut"
   Pop $OptDesktop
-  ${NSD_CreateCheckbox} 0 32u 100% 10u "Create a &Start Menu shortcut"
+  ${NSD_CreateCheckbox} 0 38u 100% 14u "Create a &Start Menu shortcut"
   Pop $OptStartMenu
   System::Call 'user32::SendMessageW(p $OptDesktop, i 0x0030, p $FReg, i 0)'
   System::Call 'user32::SendMessageW(p $OptStartMenu, i 0x0030, p $FReg, i 0)'
+  System::Call 'user32::ShowWindow(p $OptDesktop, i 5)'
+  System::Call 'user32::ShowWindow(p $OptStartMenu, i 5)'
   ${NSD_Check} $OptDesktop
   ${NSD_Check} $OptStartMenu
   ; progress bar + status inside panel (hidden until install), pixel coords
@@ -353,7 +390,7 @@ Function fFinish
   ${If} $0 == error
     Abort
   ${EndIf}
-  !insertmacro LayoutInit
+  !insertmacro LayoutInit ForceClassicCaption
   ; hide Back (cannot return past install)
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 3) p.r1'
   System::Call 'user32::EnableWindow(p $1, i 0)'
@@ -391,7 +428,7 @@ Function un.fConfirm
   ${If} $0 == error
     Abort
   ${EndIf}
-  !insertmacro LayoutInit
+  !insertmacro LayoutInit un.ForceClassicCaption
   ${NSD_CreateLabel} 0 4 100% 14u "Uninstall Web98"
   Pop $0
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FBold, i 0)'
@@ -413,7 +450,7 @@ Function un.fRemove
   ${If} $0 == error
     Abort
   ${EndIf}
-  !insertmacro LayoutInit
+  !insertmacro LayoutInit un.ForceClassicCaption
   ${NSD_CreateLabel} 0 4 100% 14u "Removing Web98"
   Pop $0
   System::Call 'user32::SendMessageW(p $0, i 0x0030, p $FBold, i 0)'
@@ -452,7 +489,7 @@ Function un.fDone
   ${If} $0 == error
     Abort
   ${EndIf}
-  !insertmacro LayoutInit
+  !insertmacro LayoutInit un.ForceClassicCaption
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 3) p.r1'
   System::Call 'user32::EnableWindow(p $1, i 0)'
   System::Call 'user32::ShowWindow(p $1, i 0)'
