@@ -77,8 +77,12 @@ std::string originFromUrl(const std::string& url) {
   if (host.find_first_of(" \t/?#@") != std::string::npos) return {};
   if (!port.empty()) {
     if (port.size() > 5) return {};
-    for (char c : port)
+    unsigned long portNum = 0;
+    for (char c : port) {
       if (!isDigit(c)) return {};
+      portNum = portNum * 10 + static_cast<unsigned long>(c - '0');
+      if (portNum > 65535) return {};
+    }
     if ((scheme == "http" && port == "80") ||
         (scheme == "https" && port == "443")) {
       port.clear();

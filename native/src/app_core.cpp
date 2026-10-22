@@ -972,10 +972,10 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
       return;
     }
     if (channel == "passwords:get") {
-      int64_t id = 0;
+      int64_t loginId = 0;
       const Json* idv = arg.isObject() ? arg.find("id") : nullptr;
       std::vector<uint8_t> blob;
-      if (idv && sanitizeId(*idv, id) && storage_.getLoginSecret(id, blob)) {
+      if (idv && sanitizeId(*idv, loginId) && storage_.getLoginSecret(loginId, blob)) {
         std::vector<uint8_t> plain = dpapiUnprotect(blob);
         Json o = Json::makeObject();
         o.obj.emplace_back("ok", Json::makeBool(!plain.empty()));
@@ -1015,9 +1015,9 @@ void AppCore::handleIpc(const BrowserCtx& ctx, const std::string& channel,
       return;
     }
     if (channel == "passwords:delete") {
-      int64_t id = 0;
+      int64_t loginId = 0;
       const Json* idv = arg.isObject() ? arg.find("id") : nullptr;
-      if (idv && sanitizeId(*idv, id)) storage_.deleteLogin(id);
+      if (idv && sanitizeId(*idv, loginId)) storage_.deleteLogin(loginId);
       if (isInvoke) replyNull();
       return;
     }

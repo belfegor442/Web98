@@ -67,6 +67,7 @@ size_t findTagEnd(const std::string& s, size_t lt) {
 }
 
 // Case-insensitive attribute lookup on the raw (case-preserved) tag text.
+// Returns the entity-decoded attribute value (empty when absent).
 std::string attrValue(const std::string& tag, const char* name) {
   size_t nlen = std::strlen(name);
   auto alnumish = [](char c) {
@@ -89,12 +90,12 @@ std::string attrValue(const std::string& tag, const char* name) {
     if (tag[j] == '"' || tag[j] == '\'') {
       char q = tag[j++];
       size_t end = tag.find(q, j);
-      if (end == std::string::npos) return tag.substr(j);
-      return tag.substr(j, end - j);
+      if (end == std::string::npos) return bmDecodeEntities(tag.substr(j));
+      return bmDecodeEntities(tag.substr(j, end - j));
     }
     size_t end = j;
     while (end < tag.size() && tag[end] != ' ' && tag[end] != '\t') ++end;
-    return tag.substr(j, end - j);
+    return bmDecodeEntities(tag.substr(j, end - j));
   }
   return std::string();
 }
