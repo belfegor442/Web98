@@ -14,10 +14,24 @@ $makensis = 'C:\Program Files (x86)\NSIS\makensis.exe'
 if (-not (Test-Path (Join-Path $src 'web98.exe'))) { throw "Release build not found: $src" }
 if (-not (Test-Path $makensis)) { throw "makensis not found: $makensis" }
 
+# ------------------------------------------------------- w98title.dll build
+# Custom Win98 title bar helper for the setup/uninstall windows (x86: NSIS
+# installers are 32-bit processes). Staged for `File /oname` in web98.nsi but
+# NOT installed to $INSTDIR.
+$tbSrc = Join-Path $inst 'w98title.cpp'
+if (-not (Test-Path $tbSrc)) { throw "missing $tbSrc" }
+$vcvars = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars32.bat'
+if (-not (Test-Path $vcvars)) { throw "vcvars32.bat not found: $vcvars" }
+$tbDll = Join-Path $src 'w98title.dll'
+if (Test-Path $tbDll) { Remove-Item $tbDll -Force }
+& cmd /c "`"$vcvars`" >nul 2>&1 && cl /nologo /LD /O2 /W3 /DUNICODE /D_UNICODE `"$tbSrc`" /Fo:`"$env:TEMP\w98title.obj`" /Fe:`"$tbDll`" /link /NOIMPLIB user32.lib gdi32.lib msimg32.lib"
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tbDll)) { throw "w98title.dll build failed" }
+Write-Host 'w98title.dll built'
+
 # ---------------------------------------------------------------- stage
 if (Test-Path $staged) { Remove-Item $staged -Recurse -Force }
 New-Item -ItemType Directory -Path $staged, $dist -Force | Out-Null
-$exclude = @('web98_unit.exe', 'sqlite3.lib', 'web98.lib', 'web98.exp')
+$exclude = @('web98_unit.exe', 'sqlite3.lib', 'web98.lib', 'web98.exp', 'w98title.dll')
 $files = Get-ChildItem $src -Recurse -File | Where-Object { $exclude -notcontains $_.Name }
 foreach ($f in $files) {
   $rel = $f.FullName.Substring($src.Length + 1)
@@ -25,7 +39,8 @@ foreach ($f in $files) {
   New-Item -ItemType Directory -Path (Split-Path $dst) -Force | Out-Null
   Copy-Item $f.FullName $dst
 }
-Write-Host "staged $($files.Count) files -> installer\staged"
+Copy-Item $tbDll (Join-Path $staged 'w98title.dll') -Force
+Write-Host "staged $($files.Count) files -> installer\staged (+ w98title.dll)"
 
 # ---------------------------------------------------------------- banner.bmp
 Add-Type -AssemblyName System.Drawing

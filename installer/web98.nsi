@@ -41,11 +41,13 @@ Var OptStartMenu
 Var LaunchBox
 Var DesktopOn
 Var LogH
+Var StripH
 
 ; ---------------------------------------------------------- layout macro
 ; Called after nsDialogs::Create in every page. Moves content panel right
 ; of a full-height banner, moves buttons to top-right, applies fonts.
 ; ${1} = caption function to call (ForceClassicCaption / un.ForceClassicCaption)
+; $StripH = custom title-bar strip height (w98title.dll; 0 = no strip).
 !macro LayoutInit capFn
   ; Re-apply classic caption every page (mode can flip after first paint).
   Call ${capFn}
@@ -60,6 +62,15 @@ Var LogH
   System::Call '*$4(i.r5, i.r6, i.r7, i.r8)'
   StrCpy $R2 $7
   StrCpy $R3 $8
+  ${If} $StripH == ""
+    StrCpy $StripH 0
+  ${EndIf}
+  ; derived geometry: banner/panel/buttons all start below the title strip
+  IntOp $R8 $R3 - $StripH   ; banner height
+  IntOp $R7 $StripH + 36    ; panel y
+  IntOp $R6 $StripH + 8     ; nav buttons y
+  IntOp $R5 $R3 - $StripH
+  IntOp $R5 $R5 - 43        ; panel height (bottom margin 7)
   ; hide NSIS separator + version text
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i -1) p.r1'
   System::Call 'user32::ShowWindow(p $1, i 0)'
@@ -67,10 +78,10 @@ Var LogH
   System::Call 'user32::ShowWindow(p $1, i 0)'
   ; banner static (created once, resized after)
   ${If} $Banner == ""
-    System::Call 'user32::CreateWindowExW(i 0, w "Static", w "", i 0x5000000E, i 0, i 0, i 164, i $R3, p $HWNDPARENT, p 0, p 0, p 0) p.r1'
+    System::Call 'user32::CreateWindowExW(i 0, w "Static", w "", i 0x5000000E, i 0, i $StripH, i 164, i $R8, p $HWNDPARENT, p 0, p 0, p 0) p.r1'
     StrCpy $Banner $1
   ${EndIf}
-  System::Call 'user32::SetWindowPos(p $Banner, p 0, i 0, i 0, i 164, i $R3, i 0x0006)'
+  System::Call 'user32::SetWindowPos(p $Banner, p 0, i 0, i $StripH, i 164, i $R8, i 0x0004)'
   ${If} $Banner != "0"
   ${AndIf} $BannerImg != "0"
   ${AndIf} $BannerImg != ""
@@ -79,20 +90,19 @@ Var LogH
   ; move nsDialogs panel (#32770 child of main) right of banner
   System::Call 'user32::FindWindowExW(p $HWNDPARENT, p 0, w "#32770", p 0) p.r9'
   IntOp $R4 $R2 - 182
-  IntOp $R5 $R3 - 43
-  System::Call 'user32::SetWindowPos(p $9, p 0, i 175, i 36, i $R4, i $R5, i 0x0004)'
-  ; buttons top-right: y=8, [Cancel][Back][Next]
+  System::Call 'user32::SetWindowPos(p $9, p 0, i 175, i $R7, i $R4, i $R5, i 0x0004)'
+  ; buttons top-right: y=$StripH+8, [Cancel][Back][Next]
   IntOp $1 $R2 - 89
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r9'
-  System::Call 'user32::SetWindowPos(p $9, p 0, i $1, i 8, i 0, i 0, i 0x0005)'
+  System::Call 'user32::SetWindowPos(p $9, p 0, i $1, i $R6, i 0, i 0, i 0x0005)'
   System::Call 'user32::SendMessageW(p $9, i 0x0030, p $FReg, i 0)'
   IntOp $1 $R2 - 170
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 3) p.r9'
-  System::Call 'user32::SetWindowPos(p $9, p 0, i $1, i 8, i 0, i 0, i 0x0005)'
+  System::Call 'user32::SetWindowPos(p $9, p 0, i $1, i $R6, i 0, i 0, i 0x0005)'
   System::Call 'user32::SendMessageW(p $9, i 0x0030, p $FReg, i 0)'
   IntOp $1 $R2 - 251
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 2) p.r9'
-  System::Call 'user32::SetWindowPos(p $9, p 0, i $1, i 8, i 0, i 0, i 0x0005)'
+  System::Call 'user32::SetWindowPos(p $9, p 0, i $1, i $R6, i 0, i 0, i 0x0005)'
   System::Call 'user32::SendMessageW(p $9, i 0x0030, p $FReg, i 0)'
   ; re-enable Next (license page may have disabled it)
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
@@ -125,6 +135,7 @@ Function .onInit
   SetOutPath "$PLUGINSDIR"
   File /oname=banner.bmp "banner.bmp"
   File /oname=terms.txt "terms.txt"
+  File /oname=w98title.dll "staged\w98title.dll"
   System::Call 'user32::LoadImageW(p 0, w "$PLUGINSDIR\banner.bmp", i 0, i 0, i 0, i 0x0010) p.r1'
   StrCpy $BannerImg $1
   Call ForceClassicCaption
@@ -136,6 +147,36 @@ doInstall:
   StrCpy $DesktopOn 1
   Call DoInstall
 initDone:
+FunctionEnd
+
+; ------------------------------------------------- custom Win98 title bar
+; w98title.dll (extracted to $PLUGINSDIR above / in un.onInit) subclasses the
+; main window: strips WS_CAPTION|WS_THICKFRAME and paints a Win98 title strip
+; (navy gradient + icon + min/max/close). $StripH gets the strip height so
+; LayoutInit positions everything below it; 0 when the DLL failed to attach.
+!macro AttachTitleBarBody
+  StrCpy $StripH "0"
+  ClearErrors
+  System::Call 'kernel32::LoadLibraryW(w "$PLUGINSDIR\w98title.dll") p.r0'
+  ${If} $0 != "0"
+  ${AndIf} $0 != ""
+    ; pin handle above: never freed, keeps the subclass WNDPROC resident
+    System::Call '"$PLUGINSDIR\w98title.dll"::W98TitleAttach(p $HWNDPARENT) i.r1'
+    ${If} $1 = 1
+      System::Call '"$PLUGINSDIR\w98title.dll"::W98TitleStripH() i.r2'
+      ${If} $2 > 0
+        StrCpy $StripH $2
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+!macroend
+
+Function .onGUIInit
+  !insertmacro AttachTitleBarBody
+FunctionEnd
+
+Function un.onGUIInit
+  !insertmacro AttachTitleBarBody
 FunctionEnd
 
 ; Win98-style title bar: prefer light chrome, then paint the caption navy
@@ -420,6 +461,15 @@ FunctionEnd
 ; ============================================================ UNINSTALLER
 Var UnBar
 Var UnStatus
+
+Function un.onInit
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File /oname=banner.bmp "banner.bmp"
+  File /oname=w98title.dll "staged\w98title.dll"
+  System::Call 'user32::LoadImageW(p 0, w "$PLUGINSDIR\banner.bmp", i 0, i 0, i 0, i 0x0010) p.r1'
+  StrCpy $BannerImg $1
+FunctionEnd
 
 UninstPage custom un.fConfirm un.fConfirmLeave
 Function un.fConfirm
