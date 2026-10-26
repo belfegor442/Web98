@@ -10,3 +10,4 @@ native/build/
 installer/staged/
 installer/files.nsh
 installer/banner.bmp
+*.obj

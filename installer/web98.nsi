@@ -400,10 +400,13 @@ Function DoInstall
     System::Call 'user32::SetWindowTextW(p $StatusH, w "Installing files...")'
   ${EndIf}
   System::Call 'user32::SendMessageW(p $Bar, i 0x406, i 0, i ${TOTALFILES})'
-  ; disable Next + Back during extract
+  ; disable Next + Back + Cancel during extract (no cancel-confirm logic exists
+  ; in the custom pump; grayed Cancel while busy matches classic Win98 Setup)
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
   System::Call 'user32::EnableWindow(p $1, i 0)'
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 3) p.r1'
+  System::Call 'user32::EnableWindow(p $1, i 0)'
+  System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 2) p.r1'
   System::Call 'user32::EnableWindow(p $1, i 0)'
   ; extraction (File instructions from files.nsh)
   !insertmacro InstallFiles
@@ -420,6 +423,8 @@ Function DoInstall
   !insertmacro LogLine "install-done"
   FileClose $LogH
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
+  System::Call 'user32::EnableWindow(p $1, i 1)'
+  System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 2) p.r1'
   System::Call 'user32::EnableWindow(p $1, i 1)'
 FunctionEnd
 
@@ -463,12 +468,27 @@ Var UnBar
 Var UnStatus
 
 Function un.onInit
+  IfSilent unSilent
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
   File /oname=banner.bmp "banner.bmp"
   File /oname=w98title.dll "staged\w98title.dll"
   System::Call 'user32::LoadImageW(p 0, w "$PLUGINSDIR\banner.bmp", i 0, i 0, i 0, i 0x0010) p.r1'
   StrCpy $BannerImg $1
+  Return
+unSilent:
+  ; silent mode: custom pages never run, so remove here
+  Call un.DoRemove
+FunctionEnd
+
+; Shared removal body — runs from the Remove page (GUI) or un.onInit (silent).
+Function un.DoRemove
+  Delete "$SMPROGRAMS\Web98\Web98.lnk"
+  Delete "$SMPROGRAMS\Web98\Uninstall Web98.lnk"
+  RMDir "$SMPROGRAMS\Web98"
+  Delete "$DESKTOP\Web98.lnk"
+  RMDir /r "$INSTDIR"
+  DeleteRegKey HKCU "Software\Web98"
 FunctionEnd
 
 UninstPage custom un.fConfirm un.fConfirmLeave
@@ -511,23 +531,20 @@ Function un.fRemove
   System::Call 'user32::CreateWindowExW(i 0, w "msctls_progress32", w "", i 0x50000000, i 8, i 50, i 380, i 14, p $9, p 0, p 0, p 0) p.r1'
   StrCpy $UnBar $1
   System::Call 'user32::SendMessageW(p $UnBar, i 0x406, i 0, i 3)'
-  System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
-  System::Call 'user32::EnableWindow(p $1, i 0)'
-  System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 3) p.r1'
-  System::Call 'user32::EnableWindow(p $1, i 0)'
   nsDialogs::Show
 FunctionEnd
 
 Function un.fRemoveLeave
+  ; disable Next + Back WHILE removing — these must run after nsDialogs::Show
+  ; returned: disabling id1 before Show deadlocks the page (Leave never fires,
+  ; un.DoRemove never runs). Same busy pattern as installer DoInstall.
+  System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
+  System::Call 'user32::EnableWindow(p $1, i 0)'
+  System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 3) p.r1'
+  System::Call 'user32::EnableWindow(p $1, i 0)'
   System::Call 'user32::SendMessageW(p $UnBar, i 0x402, i 1, i 0)'
-  Delete "$SMPROGRAMS\Web98\Web98.lnk"
-  Delete "$SMPROGRAMS\Web98\Uninstall Web98.lnk"
-  RMDir "$SMPROGRAMS\Web98"
-  Delete "$DESKTOP\Web98.lnk"
-  System::Call 'user32::SendMessageW(p $UnBar, i 0x402, i 2, i 0)'
-  RMDir /r "$INSTDIR"
+  Call un.DoRemove
   System::Call 'user32::SendMessageW(p $UnBar, i 0x402, i 3, i 0)'
-  DeleteRegKey HKCU "Software\Web98"
   System::Call 'user32::GetDlgItem(p $HWNDPARENT, i 1) p.r1'
   System::Call 'user32::EnableWindow(p $1, i 1)'
 FunctionEnd

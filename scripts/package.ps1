@@ -9,7 +9,7 @@ $src  = Join-Path $root 'native\build\Release'
 $inst = Join-Path $root 'installer'
 $staged = Join-Path $inst 'staged'
 $dist = Join-Path $root 'dist'
-$makensis = 'C:\Program Files (x86)\NSIS\makensis.exe'
+$makensis = 'C:\Program Files (x86)\NSIS\Bin\makensis.exe'
 
 if (-not (Test-Path (Join-Path $src 'web98.exe'))) { throw "Release build not found: $src" }
 if (-not (Test-Path $makensis)) { throw "makensis not found: $makensis" }
@@ -31,7 +31,7 @@ Write-Host 'w98title.dll built'
 # ---------------------------------------------------------------- stage
 if (Test-Path $staged) { Remove-Item $staged -Recurse -Force }
 New-Item -ItemType Directory -Path $staged, $dist -Force | Out-Null
-$exclude = @('web98_unit.exe', 'sqlite3.lib', 'web98.lib', 'web98.exp', 'w98title.dll')
+$exclude = @('web98_unit.exe', 'sqlite3.lib', 'web98.lib', 'web98.exp', 'w98title.dll', 'w98title.exp')
 $files = Get-ChildItem $src -Recurse -File | Where-Object { $exclude -notcontains $_.Name }
 foreach ($f in $files) {
   $rel = $f.FullName.Substring($src.Length + 1)
@@ -133,6 +133,13 @@ Write-Host "files.nsh generated ($($files.Count) entries)"
 # ---------------------------------------------------------------- makensis
 & $makensis /V2 (Join-Path $inst 'web98.nsi')
 if ($LASTEXITCODE -ne 0) { throw "makensis failed: $LASTEXITCODE" }
+# The top-level NSIS\makensis.exe is only a stub that spawns Bin\makensis.exe
+# and returns before the worker finishes; invoking Bin\makensis.exe directly
+# avoids that. Belt-and-braces: no lingering makensis writers on the output.
+$mdl = (Get-Date).AddMinutes(15)
+while ((Get-Process -Name makensis -ErrorAction SilentlyContinue) -and (Get-Date) -lt $mdl) {
+  Start-Sleep -Seconds 5
+}
 $setup = Join-Path $dist 'Web98 Setup 0.1.0 x64.exe'
 if (-not (Test-Path $setup)) { throw "setup not produced: $setup" }
 $sizeMB = [math]::Round((Get-Item $setup).Length / 1MB, 1)
@@ -159,6 +166,7 @@ if ($Test) {
   $u.WaitForExit(120000) | Out-Null
   if (-not $u.HasExited) { $u.Kill(); throw 'silent uninstall timeout' }
   Start-Sleep -Seconds 2
-  if (Test-Path $testDir) { Remove-Item $testDir -Recurse -Force -ErrorAction SilentlyContinue }
-  if (Test-Path $testDir) { Write-Warning "test dir still present: $testDir" } else { Write-Host 'uninstall verified: dir removed' }
+  # Do NOT clean up ourselves here — that would mask uninstaller bugs.
+  if (Test-Path $testDir) { throw "uninstall left files behind: $testDir" }
+  Write-Host 'uninstall verified: dir removed'
 }
