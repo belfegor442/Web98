@@ -17,6 +17,7 @@
 #include "passwords.h"
 #include "safeurl.h"
 #include "security.h"
+#include "session.h"
 #include "settings.h"
 #include "storage.h"
 #include "urlbar.h"
@@ -225,6 +226,18 @@ void runSettings() {
   CHECK(n, sanitizeId(Json::makeNumber(3), id) && id == 3);
   CHECK(n, !sanitizeId(Json::makeNumber(-1), id));
   CHECK(n, sanitizeId(Json::makeString("3"), id) && id == 3);  // Number("3")=3 in JS
+  // Extended sanitizeId coverage: integer-valued doubles, rejection paths.
+  CHECK(n, sanitizeId(Json::makeNumber(0), id) && id == 0);
+  CHECK(n, sanitizeId(Json::makeNumber(2.0), id) && id == 2);  // 2.0 == floor(2.0)
+  CHECK(n, !sanitizeId(Json::makeNumber(2.5), id));            // non-integer
+  CHECK(n, !sanitizeId(Json::makeNumber(1e300), id));          // > int64 range
+  CHECK(n, !sanitizeId(Json::makeString(""), id));             // empty string
+  CHECK(n, !sanitizeId(Json::makeString("abc"), id));          // strtod end != \0
+  CHECK(n, !sanitizeId(Json::makeString("3abc"), id));         // trailing junk
+  CHECK(n, !sanitizeId(Json::makeString("3.5"), id));          // non-integer string
+  CHECK(n, !sanitizeId(Json::makeBool(true), id));
+  CHECK(n, !sanitizeId(Json::makeNull(), id));
+  CHECK(n, !sanitizeId(Json::makeArray(), id));
 
   BookmarkIn b;
   CHECK(n, sanitizeBookmark(
@@ -661,6 +674,123 @@ void runLogins() {
   ::DeleteFileA(db.c_str());
 }
 
+/* -------------------------------- session --------------------------------- */
+
+void runSession() {
+  const char* n = "session";
+
+  // Non-object / empty shapes produce no windows.
+  CHECK_EQ_INT(n, parseStoredSession(Json::makeNull()).size(), 0);
+  CHECK_EQ_INT(n, parseStoredSession(Json::makeObject()).size(), 0);
+  CHECK_EQ_INT(n, parseStoredSession(Json::makeArray()).size(), 0);
+
+  // Multi-window shape: invalid urls filtered, pinned stays in sync.
+  Json stored;
+  CHECK(n, Json::parse(
+               "{\"windows\":["
+               "{\"urls\":[\"https://a.example/\",\"javascript:alert(1)\","
+               "\"about:blank\",\"file:///C:/x.html\"],"
+               "\"active\":3,\"pinned\":[true]},"
+               "{\"urls\":[\"chrome://settings\"],\"active\":0},"
+               "{\"urls\":[\"https://b.example/\"],\"active\":0}"
+               "]}",
+               stored));
+  {
+    auto wins = parseStoredSession(stored);
+    CHECK_EQ_INT(n, wins.size(), 2);  // all-invalid middle window dropped
+    CHECK_EQ_INT(n, wins[0].urls.size(), 3);
+    CHECK_EQ_STR(n, wins[0].urls[0], "https://a.example/");
+    CHECK_EQ_STR(n, wins[0].urls[1], "about:blank");
+    CHECK_EQ_STR(n, wins[0].urls[2], "file:///C:/x.html");
+    // active=3 pointed at the filtered javascript: entry -> clamped to 0.
+    CHECK_EQ_INT(n, wins[0].active, 0);
+    // pinned[0]=true carried over; the two filtered tails fill false.
+    CHECK(n, wins[0].pinned.size() == 3 && wins[0].pinned[0] &&
+                 !wins[0].pinned[1] && !wins[0].pinned[2]);
+    CHECK_EQ_STR(n, wins[1].urls[0], "https://b.example/");
+  }
+
+  // Window cap: >8 windows keeps the first 8.
+  {
+    std::string doc = "{\"windows\":[";
+    for (int i = 0; i < 10; ++i) {
+      if (i) doc += ",";
+      doc += "{\"urls\":[\"https://w" + std::to_string(i) + ".example/\"],"
+             "\"active\":0}";
+    }
+    doc += "]}";
+    Json many;
+    CHECK(n, Json::parse(doc, many));
+    CHECK_EQ_INT(n, parseStoredSession(many).size(), 8);
+  }
+
+  // Per-window url cap: 40 loadable urls kept.
+  {
+    Json one = Json::makeObject();
+    Json win = Json::makeObject();
+    Json urls = Json::makeArray();
+    for (int i = 0; i < 45; ++i)
+      urls.arr.push_back(
+          Json::makeString("https://t.example/" + std::to_string(i)));
+    win.obj.emplace_back("urls", std::move(urls));
+    win.obj.emplace_back("active", Json::makeNumber(44));
+    Json windows = Json::makeArray();
+    windows.arr.push_back(std::move(win));
+    one.obj.emplace_back("windows", std::move(windows));
+    auto wins = parseStoredSession(one);
+    CHECK_EQ_INT(n, wins.size(), 1);
+    CHECK_EQ_INT(n, wins[0].urls.size(), 40);
+    CHECK_EQ_INT(n, wins[0].active, 0);  // 44 >= 40 -> clamped
+  }
+
+  // Legacy single-window shape {urls, active}.
+  {
+    Json legacy;
+    CHECK(n, Json::parse(
+                 "{\"urls\":[\"https://old.example/\",\"javascript:void(0)\"],"
+                 "\"active\":1}",
+                 legacy));
+    auto wins = parseStoredSession(legacy);
+    CHECK_EQ_INT(n, wins.size(), 1);
+    CHECK_EQ_INT(n, wins[0].urls.size(), 1);  // javascript: filtered
+    CHECK_EQ_STR(n, wins[0].urls[0], "https://old.example/");
+    CHECK_EQ_INT(n, wins[0].active, 0);
+  }
+
+  // active non-finite / non-number ignored (stays 0).
+  {
+    Json weird;
+    CHECK(n, Json::parse(
+                 "{\"urls\":[\"https://x.example/\"],\"active\":\"nope\"}",
+                 weird));
+    auto wins = parseStoredSession(weird);
+    CHECK_EQ_INT(n, wins.size(), 1);
+    CHECK_EQ_INT(n, wins[0].active, 0);
+  }
+
+  // buildStoredSession roundtrip: empty -> null; live -> parseable.
+  {
+    std::vector<SessionWindow> live;
+    SessionWindow w;
+    w.urls = {"https://r.example/", "javascript:void(0)"};
+    w.pinned = {true, true};
+    w.active = 1;
+    live.push_back(w);
+    SessionWindow empty;  // no urls -> skipped
+    live.push_back(empty);
+    Json built = buildStoredSession(live);
+    CHECK(n, built.isObject());
+    auto back = parseStoredSession(built);
+    CHECK_EQ_INT(n, back.size(), 1);
+    CHECK_EQ_INT(n, back[0].urls.size(), 1);  // javascript: dropped on build
+    CHECK_EQ_STR(n, back[0].urls[0], "https://r.example/");
+    CHECK_EQ_INT(n, back[0].active, 0);
+    CHECK(n, back[0].pinned.size() == 1 && back[0].pinned[0]);
+    std::vector<SessionWindow> none;
+    CHECK(n, buildStoredSession(none).isNull());
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -676,6 +806,7 @@ int main() {
   runPasswords();
   runBookmarksHtml();
   runLogins();
+  runSession();
   std::printf("%d passed, %d failed\n", g_passed, g_failed);
   return g_failed == 0 ? 0 : 1;
 }

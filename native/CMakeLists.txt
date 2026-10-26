@@ -163,6 +163,8 @@ endif()
 # ---------------------------------------------------------------------------
 set(WEB98_UNIT_SRCS
   ${WEB98_CORE_SRCS}
+  src/session.cpp
+  src/session.h
   tests/unit_tests.cpp
   )
 add_executable(web98_unit ${WEB98_UNIT_SRCS})
